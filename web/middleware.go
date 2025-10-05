@@ -279,13 +279,17 @@ func CSRFMiddleware(sm *SessionManager) func(httprouter.Handle) httprouter.Handl
 			// Get CSRF token from session
 			session, err := sm.GetSession(r)
 			if err != nil || session == nil {
-				http.Error(w, "Invalid session", http.StatusForbidden)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"status": "error", "message": "Invalid session"}`))
 				return
 			}
 
 			csrfToken := sm.GetCSRFToken(session.ID)
 			if csrfToken == "" {
-				http.Error(w, "CSRF token not found", http.StatusForbidden)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"status": "error", "message": "CSRF token not found"}`))
 				return
 			}
 
@@ -296,12 +300,25 @@ func CSRFMiddleware(sm *SessionManager) func(httprouter.Handle) httprouter.Handl
 			}
 
 			if formToken != csrfToken {
+				// Safe token logging (truncate if too short)
+				expectedLog := csrfToken
+				gotLog := formToken
+				if len(csrfToken) > 10 {
+					expectedLog = csrfToken[:10] + "..."
+				}
+				if len(formToken) > 10 {
+					gotLog = formToken[:10] + "..."
+				}
+
 				log.WithFields(log.Fields{
 					"path":     r.URL.Path,
-					"expected": csrfToken[:10] + "...",
-					"got":      formToken[:10] + "...",
+					"expected": expectedLog,
+					"got":      gotLog,
 				}).Warn("CSRF token mismatch")
-				http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"status": "error", "message": "Invalid CSRF token"}`))
 				return
 			}
 
