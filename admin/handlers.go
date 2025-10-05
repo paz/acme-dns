@@ -204,14 +204,14 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 	session, err := h.sessionManager.GetSession(r)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
 	adminUser, err := h.userRepo.GetByID(session.UserID)
 	if err != nil || !adminUser.IsAdmin {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
 		return
 	}
 

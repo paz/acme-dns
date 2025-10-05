@@ -246,7 +246,9 @@ func (sr *SessionRepository) ListByUserID(userID int64) ([]*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var sessions []*Session
 	for rows.Next() {

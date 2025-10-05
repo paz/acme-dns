@@ -424,7 +424,9 @@ func (rr *RecordRepository) GetTXTRecords(subdomain string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get TXT records: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var values []string
 	for rows.Next() {

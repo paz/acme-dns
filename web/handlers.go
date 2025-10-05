@@ -658,7 +658,7 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	// Prevent revoking current session
 	if sessionID == session.ID {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Cannot revoke current session"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Cannot revoke current session"})
 		return
 	}
 
@@ -666,7 +666,7 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	if err := h.sessionRepo.Delete(sessionID); err != nil {
 		log.WithFields(log.Fields{"error": err, "session_id": sessionID}).Error("Failed to delete session")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to revoke session"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to revoke session"})
 		return
 	}
 
