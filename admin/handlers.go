@@ -143,7 +143,9 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request, _ httproute
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // CreateUser creates a new user
@@ -186,10 +188,12 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"user":   newUser,
-	})
+	}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // DeleteUser deletes a user

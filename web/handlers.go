@@ -305,14 +305,16 @@ func (h *Handlers) ViewDomainCredentials(w http.ResponseWriter, r *http.Request,
 	// For now, we'll just return the credentials
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"username":    record.Username,
 		"password":    record.Password,
 		"subdomain":   record.Subdomain,
 		"fulldomain":  record.Subdomain + "." + h.domain,
 		"allowfrom":   record.AllowFrom,
 		"description": record.Description,
-	})
+	}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 
 	log.WithFields(log.Fields{"user_id": session.UserID, "username": username}).Debug("Domain credentials viewed")
 }
