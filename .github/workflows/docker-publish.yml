@@ -84,17 +84,19 @@ jobs:
       #     subject-digest: ${{ steps.build.outputs.digest }}
       #     push-to-registry: true
 
+      # Trivy security scanner - disabled for fork repositories (requires additional permissions)
+      # The scan still runs but results are not uploaded to GitHub Security
       - name: Run Trivy security scanner
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy results to GitHub Security
-        if: github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
+      # Upload disabled for forks - requires security-events: write permission
+      # - name: Upload Trivy results to GitHub Security
+      #   if: github.event_name != 'pull_request'
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   with:
+      #     sarif_file: 'trivy-results.sarif'
