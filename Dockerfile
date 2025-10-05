@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o acme-dns .
 
 # Runtime stage - pinned to latest stable Alpine for security updates
-FROM alpine:3.21.3
+FROM alpine:3.22.1
 LABEL maintainer="joona@kuori.org"
 LABEL org.opencontainers.image.source="https://github.com/joohoi/acme-dns"
 LABEL org.opencontainers.image.description="Simplified DNS server with a RESTful HTTP API for ACME DNS challenges with Web UI"
