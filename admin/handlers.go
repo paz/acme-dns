@@ -236,7 +236,9 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, ps httprou
 	}).Info("Admin deleted user")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // ToggleUserActive toggles a user's active status
@@ -282,7 +284,9 @@ func (h *Handlers) ToggleUserActive(w http.ResponseWriter, r *http.Request, ps h
 	}).Info("Admin toggled user active status")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // ListDomains returns a JSON list of all domains
@@ -307,7 +311,9 @@ func (h *Handlers) ListDomains(w http.ResponseWriter, r *http.Request, _ httprou
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(records)
+	if err := json.NewEncoder(w).Encode(records); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // ListUnmanagedDomains returns a JSON list of unmanaged domains
