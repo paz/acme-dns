@@ -1,7 +1,55 @@
+# Built binaries
 acme-dns
+acme-dns.exe
+acme-dns-*
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Database files
 acme-dns.db
+acme-dns.db-*
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
 acme-dns.log
-.vagrant
+*.log
+
+# Test coverage
 coverage.out
+*.out
+
+# IDE & Editor
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
 dist/
+build/
+*.test
+
+# Vagrant
+.vagrant
+
+# Claude Code
+.claude/
+
+# Configuration (local overrides)
+config/config.cfg
+data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS specific
+Thumbs.db
+.DS_Store
