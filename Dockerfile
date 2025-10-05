@@ -1,5 +1,5 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
+# Build stage - pinned to latest stable Go on Alpine
+FROM golang:1.24.0-alpine3.21 AS builder
 LABEL maintainer="joona@kuori.org"
 
 # Install build dependencies (minimal set)
@@ -35,8 +35,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -trimpath \
     -o acme-dns .
 
-# Runtime stage - use specific version for reproducibility
-FROM alpine:3.19
+# Runtime stage - pinned to latest stable Alpine for security updates
+FROM alpine:3.21.3
 LABEL maintainer="joona@kuori.org"
 LABEL org.opencontainers.image.source="https://github.com/joohoi/acme-dns"
 LABEL org.opencontainers.image.description="Simplified DNS server with a RESTful HTTP API for ACME DNS challenges with Web UI"
