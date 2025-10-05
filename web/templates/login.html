@@ -45,8 +45,12 @@
                     </div>
                 </form>
 
-                {{if .Data.AllowRegistration}}
                 <div class="text-center mt-3">
+                    <small><a href="/password-reset">Forgot Password?</a></small>
+                </div>
+
+                {{if .Data.AllowRegistration}}
+                <div class="text-center mt-2">
                     <small>Don't have an account? <a href="/signup">Sign Up</a></small>
                 </div>
                 {{end}}

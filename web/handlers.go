@@ -2,11 +2,13 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/joohoi/acme-dns/email"
 	"github.com/joohoi/acme-dns/models"
 	"github.com/julienschmidt/httprouter"
 	log "github.com/sirupsen/logrus"
@@ -14,14 +16,17 @@ import (
 
 // Handlers holds all dependencies for web handlers
 type Handlers struct {
-	sessionManager *SessionManager
-	flashStore     *FlashStore
-	userRepo       UserRepository
-	recordRepo     RecordRepository
-	sessionRepo    SessionRepositoryInterface
-	templates      *template.Template
-	config         WebConfig
-	domain         string
+	sessionManager    *SessionManager
+	flashStore        *FlashStore
+	userRepo          UserRepository
+	recordRepo        RecordRepository
+	sessionRepo       SessionRepositoryInterface
+	passwordResetRepo *models.PasswordResetRepository
+	mailer            *email.Mailer
+	templates         *template.Template
+	config            WebConfig
+	domain            string
+	baseURL           string
 }
 
 // WebConfig holds web UI configuration
@@ -34,6 +39,7 @@ type WebConfig struct {
 type UserRepository interface {
 	Authenticate(email, password string) (*models.User, error)
 	GetByID(id int64) (*models.User, error)
+	GetByEmail(email string) (*models.User, error)
 	Create(email, password string, isAdmin bool, bcryptCost int) (*models.User, error)
 	ChangePassword(userID int64, newPassword string, bcryptCost int) error
 }
@@ -60,9 +66,12 @@ func NewHandlers(
 	userRepo UserRepository,
 	recordRepo RecordRepository,
 	sessionRepo SessionRepositoryInterface,
+	passwordResetRepo *models.PasswordResetRepository,
+	mailer *email.Mailer,
 	templatesDir string, // Kept for backward compatibility but not used
 	config WebConfig,
 	domain string,
+	baseURL string,
 ) (*Handlers, error) {
 	// Load templates from embedded filesystem
 	templates, err := GetTemplates()
@@ -71,14 +80,17 @@ func NewHandlers(
 	}
 
 	return &Handlers{
-		sessionManager: sm,
-		flashStore:     fs,
-		userRepo:       userRepo,
-		recordRepo:     recordRepo,
-		sessionRepo:    sessionRepo,
-		templates:      templates,
-		config:         config,
-		domain:         domain,
+		sessionManager:    sm,
+		flashStore:        fs,
+		userRepo:          userRepo,
+		recordRepo:        recordRepo,
+		sessionRepo:       sessionRepo,
+		passwordResetRepo: passwordResetRepo,
+		mailer:            mailer,
+		templates:         templates,
+		config:            config,
+		domain:            domain,
+		baseURL:           baseURL,
 	}, nil
 }
 
@@ -88,11 +100,13 @@ func (h *Handlers) render(w http.ResponseWriter, templateName string, data *Temp
 
 	// Map template names to their content block names
 	contentBlockMap := map[string]string{
-		"login.html":     "login-content",
-		"dashboard.html": "dashboard-content",
-		"profile.html":   "profile-content",
-		"register.html":  "register-content",
-		"admin.html":     "admin-content",
+		"login.html":                    "login-content",
+		"dashboard.html":                "dashboard-content",
+		"profile.html":                  "profile-content",
+		"register.html":                 "register-content",
+		"admin.html":                    "admin-content",
+		"password_reset_request.html":   "password-reset-request-content",
+		"password_reset.html":           "password-reset-content",
 	}
 
 	// Get the content block name for this template
@@ -661,4 +675,130 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
+}
+
+// PasswordResetRequestPage shows the password reset request form
+// PasswordResetRequestPage shows the password reset request form
+func (h *Handlers) PasswordResetRequestPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	data := h.sessionManager.NewTemplateData(r, h.flashStore, "Reset Password")
+	if err := h.render(w, "password_reset_request.html", data); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to render password reset request page")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// PasswordResetRequestPost handles password reset request submission
+func (h *Handlers) PasswordResetRequestPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/password-reset", http.StatusSeeOther)
+		return
+	}
+
+	emailAddr := r.FormValue("email")
+
+	// Look up user by email
+	user, err := h.userRepo.GetByEmail(emailAddr)
+	if err != nil {
+		// Don't reveal if email exists or not (timing attack prevention)
+		log.WithFields(log.Fields{"email": emailAddr}).Debug("Password reset requested for non-existent email")
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	// Delete any existing password reset tokens for this user
+	if err := h.passwordResetRepo.DeleteByUserID(user.ID); err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": user.ID}).Warn("Failed to delete old password reset tokens")
+	}
+
+	// Create password reset token (valid for 1 hour)
+	resetToken, err := h.passwordResetRepo.Create(user.ID, emailAddr, 1)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "email": emailAddr}).Error("Failed to create password reset token")
+		http.Redirect(w, r, "/password-reset", http.StatusSeeOther)
+		return
+	}
+
+	// Send password reset email
+	resetURL := fmt.Sprintf("%s/password-reset/%s", h.baseURL, resetToken.Token)
+	subject, body := email.PasswordResetEmail(emailAddr, resetToken.Token, resetURL)
+
+	if err := h.mailer.SendEmail(emailAddr, subject, body); err != nil {
+		log.WithFields(log.Fields{"error": err, "email": emailAddr}).Error("Failed to send password reset email")
+	} else {
+		log.WithFields(log.Fields{"email": emailAddr, "user_id": user.ID}).Info("Password reset email sent")
+	}
+
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// PasswordResetPage shows the password reset form
+func (h *Handlers) PasswordResetPage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	token := ps.ByName("token")
+
+	data := h.sessionManager.NewTemplateData(r, h.flashStore, "Set New Password")
+	data.Data = map[string]interface{}{
+		"Token":             token,
+		"MinPasswordLength": h.config.MinPasswordLength,
+	}
+
+	// Validate token
+	_, err := h.passwordResetRepo.GetValid(token)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "token": token}).Warn("Invalid password reset token")
+		data.Data["Error"] = "This password reset link is invalid or has expired."
+	}
+
+	if err := h.render(w, "password_reset.html", data); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to render password reset page")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// PasswordResetPost handles password reset form submission
+func (h *Handlers) PasswordResetPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	token := ps.ByName("token")
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/password-reset/"+token, http.StatusSeeOther)
+		return
+	}
+
+	password := r.FormValue("password")
+	passwordConfirm := r.FormValue("password_confirm")
+
+	// Validate passwords match
+	if password != passwordConfirm {
+		http.Redirect(w, r, "/password-reset/"+token, http.StatusSeeOther)
+		return
+	}
+
+	// Validate password length
+	if len(password) < h.config.MinPasswordLength {
+		http.Redirect(w, r, "/password-reset/"+token, http.StatusSeeOther)
+		return
+	}
+
+	// Validate and get token
+	resetToken, err := h.passwordResetRepo.GetValid(token)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "token": token}).Warn("Invalid password reset token on submission")
+		http.Redirect(w, r, "/password-reset", http.StatusSeeOther)
+		return
+	}
+
+	// Change password
+	if err := h.userRepo.ChangePassword(resetToken.UserID, password, 12); err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": resetToken.UserID}).Error("Failed to change password")
+		http.Redirect(w, r, "/password-reset/"+token, http.StatusSeeOther)
+		return
+	}
+
+	// Mark token as used
+	if err := h.passwordResetRepo.MarkUsed(token); err != nil {
+		log.WithFields(log.Fields{"error": err, "token": token}).Warn("Failed to mark reset token as used")
+	}
+
+	log.WithFields(log.Fields{"user_id": resetToken.UserID, "email": resetToken.Email}).Info("Password reset successfully")
+
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

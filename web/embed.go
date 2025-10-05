@@ -27,8 +27,14 @@ func GetTemplates() (*template.Template, error) {
 	}
 
 	// Then parse all other templates which define content blocks
-	tmpl, err = tmpl.ParseFS(templatesFS, "templates/login.html", "templates/dashboard.html",
-		"templates/profile.html", "templates/register.html", "templates/admin.html")
+	tmpl, err = tmpl.ParseFS(templatesFS,
+		"templates/login.html",
+		"templates/dashboard.html",
+		"templates/profile.html",
+		"templates/register.html",
+		"templates/admin.html",
+		"templates/password_reset_request.html",
+		"templates/password_reset.html")
 	if err != nil {
 		return nil, err
 	}

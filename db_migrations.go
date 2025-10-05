@@ -97,6 +97,40 @@ func (d *acmedb) handleDBUpgradeTo2() error {
 	}
 	log.Debug("Created sessions table")
 
+	// Create password_resets table
+	var passwordResetsTable string
+	if Config.Database.Engine == "sqlite3" {
+		passwordResetsTable = `
+		CREATE TABLE IF NOT EXISTS password_resets (
+			token TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			email TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			used BOOLEAN NOT NULL DEFAULT 0,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+	} else {
+		// PostgreSQL
+		passwordResetsTable = `
+		CREATE TABLE IF NOT EXISTS password_resets (
+			token TEXT PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			email TEXT NOT NULL,
+			created_at BIGINT NOT NULL,
+			expires_at BIGINT NOT NULL,
+			used BOOLEAN NOT NULL DEFAULT FALSE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+	}
+
+	_, err = tx.Exec(passwordResetsTable)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Error("Error creating password_resets table")
+		return err
+	}
+	log.Debug("Created password_resets table")
+
 	// Add columns to records table
 	// SQLite doesn't support adding columns with FOREIGN KEY in ALTER TABLE
 	// PostgreSQL supports it
@@ -147,6 +181,8 @@ func (d *acmedb) handleDBUpgradeTo2() error {
 			"CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
 			"CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)",
 			"CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id)",
+			"CREATE INDEX IF NOT EXISTS idx_password_resets_user_id ON password_resets(user_id)",
+			"CREATE INDEX IF NOT EXISTS idx_password_resets_expires_at ON password_resets(expires_at)",
 		}
 	} else {
 		// PostgreSQL
@@ -156,6 +192,8 @@ func (d *acmedb) handleDBUpgradeTo2() error {
 			"CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
 			"CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)",
 			"CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id)",
+			"CREATE INDEX IF NOT EXISTS idx_password_resets_user_id ON password_resets(user_id)",
+			"CREATE INDEX IF NOT EXISTS idx_password_resets_expires_at ON password_resets(expires_at)",
 		}
 	}
 

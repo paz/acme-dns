@@ -17,6 +17,7 @@ import (
 	"github.com/caddyserver/certmagic"
 	legolog "github.com/go-acme/lego/v4/log"
 	"github.com/joohoi/acme-dns/admin"
+	"github.com/joohoi/acme-dns/email"
 	"github.com/joohoi/acme-dns/models"
 	"github.com/joohoi/acme-dns/web"
 	"github.com/julienschmidt/httprouter"
@@ -174,6 +175,21 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 		userRepo := models.NewUserRepository(DB.GetBackend(), Config.Database.Engine)
 		sessionRepo := models.NewSessionRepository(DB.GetBackend(), Config.Database.Engine)
 		recordRepo := models.NewRecordRepository(DB.GetBackend(), Config.Database.Engine)
+		passwordResetRepo := models.NewPasswordResetRepository(DB.GetBackend())
+
+		// Initialize email mailer
+		emailConfig := email.Config{
+			Enabled:     Config.Email.Enabled,
+			SMTPHost:    Config.Email.SMTPHost,
+			SMTPPort:    Config.Email.SMTPPort,
+			SMTPUser:    Config.Email.SMTPUser,
+			SMTPPass:    Config.Email.SMTPPass,
+			FromEmail:   Config.Email.FromEmail,
+			FromName:    Config.Email.FromName,
+			UseTLS:      Config.Email.UseTLS,
+			UseStartTLS: Config.Email.UseStartTLS,
+		}
+		mailer := email.NewMailer(emailConfig)
 
 		// Create session manager
 		sessionManager := web.NewSessionManager(
@@ -206,15 +222,25 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 			AllowSelfRegistration: Config.WebUI.AllowSelfRegistration,
 			MinPasswordLength:     Config.WebUI.MinPasswordLength,
 		}
+		// Build base URL for password reset emails
+		protocol := "https"
+		if Config.API.TLS == "none" || Config.API.TLS == "" {
+			protocol = "http"
+		}
+		baseURL := fmt.Sprintf("%s://%s", protocol, Config.General.Domain)
+
 		webHandlers, err := web.NewHandlers(
 			sessionManager,
 			flashStore,
 			userRepo,
 			recordRepo,
 			sessionRepo,
+			passwordResetRepo,
+			mailer,
 			"web/templates",
 			webConfig,
 			Config.General.Domain,
+			baseURL,
 		)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err}).Error("Failed to initialize web handlers")
@@ -334,6 +360,32 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 						web.LoggingMiddleware,
 					))
 				}
+
+				// Password reset routes (always available)
+				api.GET("/password-reset", web.ChainMiddleware(
+					webHandlers.PasswordResetRequestPage,
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/password-reset", web.ChainMiddleware(
+					webHandlers.PasswordResetRequestPost,
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.RateLimitMiddleware(webRateLimiter, Config.Security.RateLimiting),
+					web.LoggingMiddleware,
+				))
+				api.GET("/password-reset/:token", web.ChainMiddleware(
+					webHandlers.PasswordResetPage,
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/password-reset/:token", web.ChainMiddleware(
+					webHandlers.PasswordResetPost,
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.RateLimitMiddleware(webRateLimiter, Config.Security.RateLimiting),
+					web.LoggingMiddleware,
+				))
 
 				// Admin routes (admin authentication required)
 				api.GET("/admin", web.ChainMiddleware(
