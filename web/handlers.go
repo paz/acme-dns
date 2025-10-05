@@ -82,15 +82,10 @@ func NewHandlers(
 	}, nil
 }
 
-// render executes the base template with the appropriate content template
-func (h *Handlers) render(w http.ResponseWriter, contentTemplate string, data *TemplateData) error {
+// render executes a template by name
+func (h *Handlers) render(w http.ResponseWriter, templateName string, data *TemplateData) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// Store which content template to use
-	data.Data["ContentTemplate"] = contentTemplate
-
-	// Execute the base template
-	return h.templates.ExecuteTemplate(w, "base", data)
+	return h.templates.ExecuteTemplate(w, templateName, data)
 }
 
 // RootHandler redirects root to login or dashboard
@@ -121,7 +116,7 @@ func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request, _ httproute
 	}
 
 	// Render login page
-	if err := h.render(w, "login-content", data); err != nil {
+	if err := h.render(w, "login.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render login template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -250,7 +245,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httproute
 	data.Data["Domains"] = records
 	data.Data["Domain"] = h.domain
 
-	if err := h.render(w, "dashboard-content", data); err != nil {
+	if err := h.render(w, "dashboard.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render dashboard template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -445,7 +440,7 @@ func (h *Handlers) RegisterPage(w http.ResponseWriter, r *http.Request, _ httpro
 		data.Data["error"] = errorType
 	}
 
-	if err := h.render(w, "register-content", data); err != nil {
+	if err := h.render(w, "register.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render register template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -525,7 +520,7 @@ func (h *Handlers) ProfilePage(w http.ResponseWriter, r *http.Request, _ httprou
 	data.Data["Sessions"] = sessions
 	data.Data["CurrentSessionID"] = session.ID
 
-	if err := h.render(w, "profile-content", data); err != nil {
+	if err := h.render(w, "profile.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render profile template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

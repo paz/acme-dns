@@ -63,11 +63,7 @@
         </div>
         {{end}}
 
-        {{if .Data.ContentTemplate}}
-            {{template .Data.ContentTemplate .}}
-        {{else}}
-            {{template "content" .}}
-        {{end}}
+        {{template "content" .}}
     </main>
 
     <footer class="footer mt-auto py-3 bg-light">
