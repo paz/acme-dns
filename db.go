@@ -181,11 +181,21 @@ func (d *acmedb) handleDBUpgradeTo1() error {
 
 // Create two rows for subdomain to the txt table
 func (d *acmedb) NewTXTValuesInTransaction(tx *sql.Tx, subdomain string) error {
-	var err error
-	instr := fmt.Sprintf("INSERT INTO txt (Subdomain, LastUpdate) values('%s', 0)", subdomain)
-	_, _ = tx.Exec(instr)
-	_, _ = tx.Exec(instr)
-	return err
+	// Use parameterized query to prevent SQL injection
+	instr := "INSERT INTO txt (Subdomain, LastUpdate) VALUES (?, 0)"
+	if Config.Database.Engine == "postgres" {
+		instr = "INSERT INTO txt (Subdomain, LastUpdate) VALUES ($1, 0)"
+	}
+
+	// Execute twice with error checking
+	if _, err := tx.Exec(instr, subdomain); err != nil {
+		return fmt.Errorf("failed to insert first TXT record: %w", err)
+	}
+	if _, err := tx.Exec(instr, subdomain); err != nil {
+		return fmt.Errorf("failed to insert second TXT record: %w", err)
+	}
+
+	return nil
 }
 
 func (d *acmedb) Register(afrom cidrslice) (ACMETxt, error) {

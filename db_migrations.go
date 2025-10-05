@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -127,10 +126,13 @@ func (d *acmedb) handleDBUpgradeTo2() error {
 	}
 	log.Debug("Extended records table with user_id, created_at, and description columns")
 
-	// Set created_at for existing records to current time
+	// Set created_at for existing records to current time (use parameterized query)
 	now := time.Now().Unix()
-	updateSQL := fmt.Sprintf("UPDATE records SET created_at = %d WHERE created_at IS NULL", now)
-	_, err = tx.Exec(updateSQL)
+	updateSQL := "UPDATE records SET created_at = ? WHERE created_at IS NULL"
+	if Config.Database.Engine == "postgres" {
+		updateSQL = "UPDATE records SET created_at = $1 WHERE created_at IS NULL"
+	}
+	_, err = tx.Exec(updateSQL, now)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err.Error()}).Error("Error updating created_at for existing records")
 		return err

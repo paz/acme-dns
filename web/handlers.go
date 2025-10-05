@@ -355,8 +355,15 @@ func (h *Handlers) ViewDomainCredentials(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// Verify ownership (this should be done in recordRepo.GetByUsername with user_id check)
-	// For now, we'll just return the credentials
+	// Verify ownership - critical security check
+	if record.UserID == nil || *record.UserID != session.UserID {
+		log.WithFields(log.Fields{
+			"user_id":  session.UserID,
+			"username": username,
+		}).Warn("Unauthorized access attempt to domain credentials")
+		http.Error(w, "Forbidden - you do not own this domain", http.StatusForbidden)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
@@ -601,5 +608,7 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 
 	log.WithFields(log.Fields{"user_id": session.UserID, "revoked_session": sessionID}).Info("User revoked session")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"success"}`))
+	if _, err := w.Write([]byte(`{"status":"success"}`)); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to write response")
+	}
 }
