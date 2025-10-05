@@ -214,10 +214,12 @@ func (h *Handlers) RegisterDomain(w http.ResponseWriter, r *http.Request, _ http
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
 		"message": "Domain registration would happen here (integration with existing API logic needed)",
-	})
+	}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 
 	log.WithFields(log.Fields{
 		"user_id":     session.UserID,
@@ -246,7 +248,9 @@ func (h *Handlers) DeleteDomain(w http.ResponseWriter, r *http.Request, ps httpr
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // UpdateDomainDescription handles updating a domain's description
@@ -276,7 +280,9 @@ func (h *Handlers) UpdateDomainDescription(w http.ResponseWriter, r *http.Reques
 	log.WithFields(log.Fields{"user_id": session.UserID, "username": username}).Info("Domain description updated")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // ViewDomainCredentials returns the credentials for a domain
@@ -331,7 +337,9 @@ func (h *Handlers) Profile(w http.ResponseWriter, r *http.Request, _ httprouter.
 	data.IsAdmin = user.IsAdmin
 
 	// Would render a profile template (not yet created)
-	w.Write([]byte("Profile page - to be implemented with template"))
+	if _, err := w.Write([]byte("Profile page - to be implemented with template")); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to write response")
+	}
 }
 
 // RegisterPage displays the registration page (if self-registration is enabled)
@@ -351,7 +359,9 @@ func (h *Handlers) RegisterPage(w http.ResponseWriter, r *http.Request, _ httpro
 	data.Data["MinPasswordLength"] = h.config.MinPasswordLength
 
 	// Would render a register template (not yet created)
-	w.Write([]byte("Register page - to be implemented with template"))
+	if _, err := w.Write([]byte("Register page - to be implemented with template")); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to write response")
+	}
 }
 
 // RegisterPost handles user registration (if self-registration is enabled)
