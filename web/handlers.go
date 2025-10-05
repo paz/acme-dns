@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/joohoi/acme-dns/models"
@@ -165,25 +166,43 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request, _ httproute
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
-// isValidLocalRedirect checks if a redirect URL is safe (local path only)
+// isValidLocalRedirect checks if a redirect URL is safe (whitelist approach)
 func isValidLocalRedirect(redirect string) bool {
-	// Must start with /
-	if len(redirect) == 0 || redirect[0] != '/' {
+	// Decode URL-encoded characters first to prevent bypasses
+	decoded, err := url.QueryUnescape(redirect)
+	if err != nil {
 		return false
 	}
-	// Must not be protocol-relative (// or \/)
-	if len(redirect) > 1 && (redirect[1] == '/' || redirect[1] == '\\') {
+
+	// Must start with / but not //
+	if !strings.HasPrefix(decoded, "/") || strings.HasPrefix(decoded, "//") {
 		return false
 	}
-	// Must not contain absolute URL schemes
-	if strings.Contains(redirect, "://") {
+
+	// Must not contain protocol
+	if strings.Contains(decoded, "://") || strings.Contains(decoded, ":\\") {
 		return false
 	}
+
 	// Must not be just /
-	if redirect == "/" {
+	if decoded == "/" {
 		return false
 	}
-	return true
+
+	// Must not contain backslashes (Windows path traversal)
+	if strings.Contains(decoded, "\\") {
+		return false
+	}
+
+	// Whitelist approach: only allow specific paths
+	allowedPaths := []string{"/dashboard", "/admin", "/profile"}
+	for _, allowed := range allowedPaths {
+		if strings.HasPrefix(decoded, allowed) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Logout handles user logout
