@@ -21,6 +21,7 @@ type DNSConfig struct {
 	Logconfig logconfig
 	WebUI     webui
 	Security  security
+	Email     emailconfig
 }
 
 // Config file general section
@@ -81,6 +82,19 @@ type security struct {
 	SessionCookieName  string `toml:"session_cookie_name"`
 	CSRFCookieName     string `toml:"csrf_cookie_name"`
 	MaxRequestBodySize int    `toml:"max_request_body_size"`
+}
+
+// Email config
+type emailconfig struct {
+	Enabled    bool   `toml:"enabled"`
+	SMTPHost   string `toml:"smtp_host"`
+	SMTPPort   int    `toml:"smtp_port"`
+	SMTPUser   string `toml:"smtp_user"`
+	SMTPPass   string `toml:"smtp_pass"`
+	FromEmail  string `toml:"from_email"`
+	FromName   string `toml:"from_name"`
+	UseTLS     bool   `toml:"use_tls"`
+	UseStartTLS bool  `toml:"use_starttls"`
 }
 
 type acmedb struct {
