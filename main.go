@@ -228,8 +228,8 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 			if err != nil {
 				log.WithFields(log.Fields{"error": err}).Error("Failed to initialize admin handlers")
 			} else {
-				// Serve static files
-				api.ServeFiles("/static/*filepath", http.Dir("web/static"))
+				// Serve static files from embedded filesystem
+				api.Handler("GET", "/static/*filepath", http.StripPrefix("/static", web.GetStaticHandler()))
 
 				// Public routes
 				api.GET("/login", web.ChainMiddleware(

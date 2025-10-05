@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
-	"path/filepath"
 	"strconv"
 
 	"github.com/joohoi/acme-dns/models"
@@ -46,10 +45,11 @@ func NewHandlers(
 	fs *web.FlashStore,
 	userRepo UserRepository,
 	recordRepo RecordRepository,
-	templatesDir string,
+	templatesDir string, // Kept for backward compatibility but not used
 	domain string,
 ) (*Handlers, error) {
-	templates, err := template.ParseGlob(filepath.Join(templatesDir, "*.html"))
+	// Load templates from embedded filesystem
+	templates, err := web.GetTemplates()
 	if err != nil {
 		return nil, err
 	}
