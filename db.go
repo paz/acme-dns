@@ -147,6 +147,10 @@ func (d *acmedb) handleDBUpgradeTo1() error {
 		return err
 	}
 	tx, err := d.DB.Begin()
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Error("Database error beginning transaction")
+		return err
+	}
 	// Rollback if errored, commit if not
 	defer func() {
 		if err != nil {
@@ -189,6 +193,10 @@ func (d *acmedb) Register(afrom cidrslice) (ACMETxt, error) {
 	defer d.Mutex.Unlock()
 	var err error
 	tx, err := d.DB.Begin()
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Error("Database error beginning transaction")
+		return ACMETxt{}, errors.New("SQL error")
+	}
 	// Rollback if errored, commit if not
 	defer func() {
 		if err != nil {
