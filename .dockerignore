@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!CLAUDE.md
+docs/
+.github/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+acme-dns
+acme-dns-*
+
+# Test files
+*_test.go
+test/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+!Dockerfile
+
+# Config examples (we copy config.cfg separately)
+config/
+
+# Data directories
+data/
+*.db
+*.db-*
+
+# Misc
+.claude/
+*.log
+coverage.out

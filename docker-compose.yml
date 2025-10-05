@@ -1,15 +1,38 @@
-version: '2'
+version: '3.8'
+
 services:
   acmedns:
     build:
       context: .
       dockerfile: Dockerfile
-    image: joohoi/acme-dns:latest
+    image: ghcr.io/joohoi/acme-dns:latest
+    container_name: acme-dns
+    restart: unless-stopped
     ports:
-      - "443:443"
-      - "53:53"
+      - "53:53/tcp"
       - "53:53/udp"
-      - "80:80"
+      - "80:80/tcp"
+      - "443:443/tcp"
     volumes:
-      - ./config:/etc/acme-dns:ro
-      - ./data:/var/lib/acme-dns
+      # Configuration file (read-only)
+      - ./config/config.cfg:/etc/acme-dns/config.cfg:ro
+      # Database and persistent data
+      - acme-dns-data:/var/lib/acme-dns
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - acme-dns-network
+
+volumes:
+  acme-dns-data:
+    driver: local
+
+networks:
+  acme-dns-network:
+    driver: bridge
