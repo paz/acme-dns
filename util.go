@@ -51,7 +51,32 @@ func prepareConfig(conf DNSConfig) (DNSConfig, error) {
 
 	// Default values for options added to config to keep backwards compatibility with old config
 	if conf.API.ACMECacheDir == "" {
-		conf.API.ACMECacheDir = "api-certs"
+		conf.API.ACMECacheDir = DefaultACMECacheDir
+	}
+
+	// WebUI defaults
+	if conf.WebUI.SessionDuration == 0 {
+		conf.WebUI.SessionDuration = DefaultSessionDuration
+	}
+	if conf.WebUI.MinPasswordLength == 0 {
+		conf.WebUI.MinPasswordLength = DefaultMinPasswordLength
+	}
+
+	// Security defaults
+	if conf.Security.MaxLoginAttempts == 0 {
+		conf.Security.MaxLoginAttempts = DefaultMaxLoginAttempts
+	}
+	if conf.Security.LockoutDuration == 0 {
+		conf.Security.LockoutDuration = DefaultLockoutDuration
+	}
+	if conf.Security.SessionCookieName == "" {
+		conf.Security.SessionCookieName = DefaultSessionCookieName
+	}
+	if conf.Security.CSRFCookieName == "" {
+		conf.Security.CSRFCookieName = DefaultCSRFCookieName
+	}
+	if conf.Security.MaxRequestBodySize == 0 {
+		conf.Security.MaxRequestBodySize = MaxRequestBodySize
 	}
 
 	return conf, nil

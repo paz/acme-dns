@@ -11,20 +11,36 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"syscall"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 	legolog "github.com/go-acme/lego/v3/log"
+	"github.com/joohoi/acme-dns/admin"
+	"github.com/joohoi/acme-dns/models"
+	"github.com/joohoi/acme-dns/web"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rs/cors"
 	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	// Created files are not world writable
-	syscall.Umask(0077)
+	// Created files are not world writable (Unix-only)
+	// Note: syscall.Umask is not available on Windows
+	// This is handled by file permissions in Windows differently
+
+	// CLI flags
 	configPtr := flag.String("c", "/etc/acme-dns/config.cfg", "config file location")
+	createAdminPtr := flag.String("create-admin", "", "create admin user with specified email")
+	versionPtr := flag.Bool("version", false, "show version information")
+	dbInfoPtr := flag.Bool("db-info", false, "show database migration status")
+
 	flag.Parse()
+
+	// Handle version flag
+	if *versionPtr {
+		ShowVersion()
+		os.Exit(0)
+	}
 	// Read global config
 	var err error
 	if fileIsAccessible(*configPtr) {
@@ -43,6 +59,24 @@ func main() {
 	}
 
 	setupLogging(Config.Logconfig.Format, Config.Logconfig.Level)
+
+	// Handle database info flag
+	if *dbInfoPtr {
+		if err := ShowDatabaseInfo(); err != nil {
+			log.Errorf("Error getting database info: %v", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Handle create admin flag
+	if *createAdminPtr != "" {
+		if err := CreateAdminUser(*createAdminPtr); err != nil {
+			log.Errorf("Error creating admin user: %v", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// Open database
 	newDB := new(acmedb)
@@ -123,11 +157,199 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 		// Logwriter for saner log output
 		c.Log = stdlog.New(logwriter, "", 0)
 	}
+	// API endpoints (existing, backward compatible)
 	if !Config.API.DisableRegistration {
 		api.POST("/register", webRegisterPost)
 	}
 	api.POST("/update", Auth(webUpdatePost))
 	api.GET("/health", healthCheck)
+
+	// Web UI endpoints (only if enabled)
+	if Config.WebUI.Enabled {
+		log.Info("Web UI enabled - initializing web components")
+
+		// Initialize repositories
+		userRepo := models.NewUserRepository(DB.GetBackend(), Config.Database.Engine)
+		sessionRepo := models.NewSessionRepository(DB.GetBackend(), Config.Database.Engine)
+		recordRepo := models.NewRecordRepository(DB.GetBackend(), Config.Database.Engine)
+
+		// Create session manager
+		sessionManager := web.NewSessionManager(
+			sessionRepo,
+			Config.Security.SessionCookieName,
+			Config.API.TLS != "", // Secure cookies if TLS is enabled
+		)
+
+		// Create flash message store
+		flashStore := web.NewFlashStore()
+
+		// Initialize rate limiter for web UI
+		webRateLimiter := web.NewRateLimiter(60, 10) // 60 requests/min, burst 10
+		webRateLimiter.Cleanup()
+
+		// Start session cleanup goroutine
+		go func() {
+			for {
+				if err := sessionRepo.DeleteExpired(); err != nil {
+					log.WithFields(log.Fields{"error": err}).Warn("Session cleanup failed")
+				}
+				log.Debug("Cleaned up expired sessions")
+				// Run every hour
+				<-time.After(1 * time.Hour)
+			}
+		}()
+
+		// Initialize web handlers
+		webConfig := web.WebConfig{
+			AllowSelfRegistration: Config.WebUI.AllowSelfRegistration,
+			MinPasswordLength:     Config.WebUI.MinPasswordLength,
+		}
+		webHandlers, err := web.NewHandlers(
+			sessionManager,
+			flashStore,
+			userRepo,
+			recordRepo,
+			"web/templates",
+			webConfig,
+			Config.General.Domain,
+		)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("Failed to initialize web handlers")
+		} else {
+			// Initialize admin handlers
+			adminHandlers, err := admin.NewHandlers(
+				sessionManager,
+				flashStore,
+				userRepo,
+				recordRepo,
+				"web/templates",
+				Config.General.Domain,
+			)
+			if err != nil {
+				log.WithFields(log.Fields{"error": err}).Error("Failed to initialize admin handlers")
+			} else {
+				// Serve static files
+				api.ServeFiles("/static/*filepath", http.Dir("web/static"))
+
+				// Public routes
+				api.GET("/login", web.ChainMiddleware(
+					webHandlers.LoginPage,
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/login", web.ChainMiddleware(
+					webHandlers.LoginPost,
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.RateLimitMiddleware(webRateLimiter, Config.Security.RateLimiting),
+					web.LoggingMiddleware,
+				))
+				api.GET("/logout", web.ChainMiddleware(
+					webHandlers.Logout,
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+
+				// User routes (authentication required)
+				api.GET("/dashboard", web.ChainMiddleware(
+					webHandlers.Dashboard,
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/dashboard/register", web.ChainMiddleware(
+					webHandlers.RegisterDomain,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.LoggingMiddleware,
+				))
+				api.GET("/dashboard/domain/:username/credentials", web.ChainMiddleware(
+					webHandlers.ViewDomainCredentials,
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.DELETE("/dashboard/domain/:username", web.ChainMiddleware(
+					webHandlers.DeleteDomain,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/dashboard/domain/:username/description", web.ChainMiddleware(
+					webHandlers.UpdateDomainDescription,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+
+				// Registration routes (if self-registration enabled)
+				if Config.WebUI.AllowSelfRegistration {
+					api.GET("/register", web.ChainMiddleware(
+						webHandlers.RegisterPage,
+						web.SecurityHeadersMiddleware,
+						web.LoggingMiddleware,
+					))
+					api.POST("/register", web.ChainMiddleware(
+						webHandlers.RegisterPost,
+						web.SecurityHeadersMiddleware,
+						web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+						web.RateLimitMiddleware(webRateLimiter, Config.Security.RateLimiting),
+						web.LoggingMiddleware,
+					))
+				}
+
+				// Admin routes (admin authentication required)
+				api.GET("/admin", web.ChainMiddleware(
+					adminHandlers.Dashboard,
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/admin/users", web.ChainMiddleware(
+					adminHandlers.CreateUser,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.LoggingMiddleware,
+				))
+				api.DELETE("/admin/users/:id", web.ChainMiddleware(
+					adminHandlers.DeleteUser,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/admin/users/:id/toggle", web.ChainMiddleware(
+					adminHandlers.ToggleUserActive,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.DELETE("/admin/domains/:username", web.ChainMiddleware(
+					adminHandlers.DeleteDomain,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/admin/claim/:username", web.ChainMiddleware(
+					adminHandlers.ClaimDomain,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+
+				log.Info("Web UI routes registered successfully")
+			}
+		}
+	}
 
 	host := Config.API.IP + ":" + Config.API.Port
 

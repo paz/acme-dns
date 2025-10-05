@@ -1,0 +1,57 @@
+{{define "content"}}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow">
+            <div class="card-body">
+                <h3 class="card-title text-center mb-4">
+                    <i class="bi bi-shield-lock"></i> Login
+                </h3>
+
+                {{if .Data.error}}
+                <div class="alert alert-danger">
+                    {{if eq .Data.error "invalid_credentials"}}
+                    Invalid email or password
+                    {{else}}
+                    Login failed. Please try again.
+                    {{end}}
+                </div>
+                {{end}}
+
+                {{if .Data.success}}
+                <div class="alert alert-success">
+                    {{if eq .Data.success "registered"}}
+                    Registration successful! Please login.
+                    {{end}}
+                </div>
+                {{end}}
+
+                <form method="POST" action="/login">
+                    <input type="hidden" name="redirect" value="{{.Data.Redirect}}">
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-box-arrow-in-right"></i> Login
+                        </button>
+                    </div>
+                </form>
+
+                {{if .Data.AllowRegistration}}
+                <div class="text-center mt-3">
+                    <small>Don't have an account? <a href="/register">Register</a></small>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

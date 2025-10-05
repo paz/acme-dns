@@ -48,16 +48,16 @@ func Auth(update httprouter.Handle) httprouter.Handle {
 			ctx := context.WithValue(r.Context(), ACMETxtKey, postData)
 			update(w, r.WithContext(ctx), p)
 		} else {
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write(jsonError("forbidden"))
+			_, _ = w.Write(jsonError(ErrForbidden))
 		}
 	}
 }
 
 func getUserFromRequest(r *http.Request) (ACMETxt, error) {
-	uname := r.Header.Get("X-Api-User")
-	passwd := r.Header.Get("X-Api-Key")
+	uname := r.Header.Get(HeaderAPIUser)
+	passwd := r.Header.Get(HeaderAPIKey)
 	username, err := getValidUsername(uname)
 	if err != nil {
 		return ACMETxt{}, fmt.Errorf("Invalid username: %s: %s", uname, err.Error())

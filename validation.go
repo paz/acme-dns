@@ -18,7 +18,7 @@ func getValidUsername(u string) (uuid.UUID, error) {
 
 func validKey(k string) bool {
 	kn := sanitizeString(k)
-	if utf8.RuneCountInString(k) == 40 && utf8.RuneCountInString(kn) == 40 {
+	if utf8.RuneCountInString(k) == APIKeyLength && utf8.RuneCountInString(kn) == APIKeyLength {
 		// Correct length and all chars valid
 		return true
 	}
@@ -33,8 +33,8 @@ func validSubdomain(s string) bool {
 
 func validTXT(s string) bool {
 	sn := sanitizeString(s)
-	if utf8.RuneCountInString(s) == 43 && utf8.RuneCountInString(sn) == 43 {
-		// 43 chars is the current LE auth key size, but not limited / defined by ACME
+	if utf8.RuneCountInString(s) == ACMETxtLength && utf8.RuneCountInString(sn) == ACMETxtLength {
+		// Current LE auth key size, but not limited / defined by ACME
 		return true
 	}
 	return false

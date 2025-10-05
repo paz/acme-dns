@@ -17,7 +17,7 @@ import (
 )
 
 // DBVersion shows the database version this code uses. This is used for update checks.
-var DBVersion = 1
+var DBVersion = CurrentDBVersion
 
 var acmeTable = `
 	CREATE TABLE IF NOT EXISTS acmedns(
@@ -61,6 +61,12 @@ func (d *acmedb) Init(engine string, connection string) error {
 	if err != nil {
 		return err
 	}
+
+	// Configure connection pool
+	db.SetMaxOpenConns(DefaultMaxOpenConns)
+	db.SetMaxIdleConns(DefaultMaxIdleConns)
+	db.SetConnMaxLifetime(DefaultConnMaxLifetimeMinutes * 60 * 1000000000) // Convert minutes to nanoseconds
+
 	d.DB = db
 	// Check version first to try to catch old versions without version string
 	var versionString string
@@ -103,8 +109,16 @@ func (d *acmedb) checkDBUpgrades(versionString string) error {
 }
 
 func (d *acmedb) handleDBUpgrades(version int) error {
+	// Apply migrations sequentially
 	if version == 0 {
-		return d.handleDBUpgradeTo1()
+		err := d.handleDBUpgradeTo1()
+		if err != nil {
+			return err
+		}
+		version = 1
+	}
+	if version == 1 {
+		return d.handleDBUpgradeTo2()
 	}
 	return nil
 }
@@ -185,7 +199,7 @@ func (d *acmedb) Register(afrom cidrslice) (ACMETxt, error) {
 	}()
 	a := newACMETxt()
 	a.AllowFrom = cidrslice(afrom.ValidEntries())
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(a.Password), 10)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(a.Password), BcryptCostAPI)
 	regSQL := `
     INSERT INTO records(
         Username,

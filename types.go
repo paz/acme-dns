@@ -19,6 +19,8 @@ type DNSConfig struct {
 	Database  dbsettings
 	API       httpapi
 	Logconfig logconfig
+	WebUI     webui
+	Security  security
 }
 
 // Config file general section
@@ -60,6 +62,25 @@ type logconfig struct {
 	Logtype string `toml:"logtype"`
 	File    string `toml:"logfile"`
 	Format  string `toml:"logformat"`
+}
+
+// WebUI config
+type webui struct {
+	Enabled                  bool `toml:"enabled"`
+	SessionDuration          int  `toml:"session_duration"`
+	RequireEmailVerification bool `toml:"require_email_verification"`
+	AllowSelfRegistration    bool `toml:"allow_self_registration"`
+	MinPasswordLength        int  `toml:"min_password_length"`
+}
+
+// Security config
+type security struct {
+	RateLimiting       bool   `toml:"rate_limiting"`
+	MaxLoginAttempts   int    `toml:"max_login_attempts"`
+	LockoutDuration    int    `toml:"lockout_duration"`
+	SessionCookieName  string `toml:"session_cookie_name"`
+	CSRFCookieName     string `toml:"csrf_cookie_name"`
+	MaxRequestBodySize int    `toml:"max_request_body_size"`
 }
 
 type acmedb struct {

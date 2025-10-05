@@ -29,8 +29,8 @@ func webRegisterPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		err = json.Unmarshal(bdata, &aTXT)
 		if err != nil {
 			regStatus = http.StatusBadRequest
-			reg = jsonError("malformed_json_payload")
-			w.Header().Set("Content-Type", "application/json")
+			reg = jsonError(ErrMalformedJSON)
+			w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 			w.WriteHeader(regStatus)
 			_, _ = w.Write(reg)
 			return
@@ -41,8 +41,8 @@ func webRegisterPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	err = aTXT.AllowFrom.isValid()
 	if err != nil {
 		regStatus = http.StatusBadRequest
-		reg = jsonError("invalid_allowfrom_cidr")
-		w.Header().Set("Content-Type", "application/json")
+		reg = jsonError(ErrInvalidCIDR)
+		w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 		w.WriteHeader(regStatus)
 		_, _ = w.Write(reg)
 		return
@@ -66,7 +66,7 @@ func webRegisterPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 			log.WithFields(log.Fields{"error": "json"}).Debug("Could not marshal JSON")
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 	w.WriteHeader(regStatus)
 	_, _ = w.Write(reg)
 }
@@ -85,29 +85,43 @@ func webUpdatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	if !validSubdomain(a.Subdomain) {
 		log.WithFields(log.Fields{"error": "subdomain", "subdomain": a.Subdomain, "txt": a.Value}).Debug("Bad update data")
 		updStatus = http.StatusBadRequest
-		upd = jsonError("bad_subdomain")
+		upd = jsonError(ErrBadSubdomain)
 	} else if !validTXT(a.Value) {
 		log.WithFields(log.Fields{"error": "txt", "subdomain": a.Subdomain, "txt": a.Value}).Debug("Bad update data")
 		updStatus = http.StatusBadRequest
-		upd = jsonError("bad_txt")
+		upd = jsonError(ErrBadTXT)
 	} else if validSubdomain(a.Subdomain) && validTXT(a.Value) {
 		err := DB.Update(a.ACMETxtPost)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err.Error()}).Debug("Error while trying to update record")
 			updStatus = http.StatusInternalServerError
-			upd = jsonError("db_error")
+			upd = jsonError(ErrDBError)
 		} else {
 			log.WithFields(log.Fields{"subdomain": a.Subdomain, "txt": a.Value}).Debug("TXT updated")
 			updStatus = http.StatusOK
 			upd = []byte("{\"txt\": \"" + a.Value + "\"}")
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 	w.WriteHeader(updStatus)
 	_, _ = w.Write(upd)
 }
 
 // Endpoint used to check the readiness and/or liveness (health) of the server.
 func healthCheck(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// Try to ping the database
+	if DB != nil {
+		backend := DB.GetBackend()
+		if err := backend.Ping(); err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("Health check failed - database ping error")
+			w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write(jsonError("database_unavailable"))
+			return
+		}
+	}
+
+	w.Header().Set(HeaderContentType, HeaderContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("{\"status\":\"ok\"}"))
 }
