@@ -179,6 +179,31 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Admin functions
+function resetUserPassword(userId, email) {
+    if (!confirm(`Send password reset email to ${email}?`)) {
+        return;
+    }
+
+    fetch(`/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast('Password reset email sent successfully', 'success');
+        } else {
+            showToast(data.message || 'Failed to send password reset email', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to send password reset email', 'danger');
+    });
+}
+
 function deleteUser(userId, email) {
     if (!confirm(`Are you sure you want to delete user ${email}?`)) {
         return;
@@ -579,6 +604,14 @@ document.addEventListener('DOMContentLoaded', () => {
             revokeSession(sessionId);
         }
 
+        // Reset password buttons (admin page)
+        if (e.target.closest('.reset-password-btn')) {
+            const btn = e.target.closest('.reset-password-btn');
+            const userId = btn.dataset.userId;
+            const email = btn.dataset.email;
+            resetUserPassword(userId, email);
+        }
+
         // Delete user buttons (admin page)
         if (e.target.closest('.delete-user-btn')) {
             const btn = e.target.closest('.delete-user-btn');
@@ -611,4 +644,31 @@ document.addEventListener('DOMContentLoaded', () => {
             showClaimModal(username, subdomain);
         }
     });
+});
+
+// Create User Form - Toggle password field based on method
+document.addEventListener('DOMContentLoaded', () => {
+    const passwordManual = document.getElementById('password-manual');
+    const passwordEmail = document.getElementById('password-email');
+    const passwordField = document.getElementById('manual-password-field');
+    const passwordInput = document.getElementById('user-password');
+
+    if (passwordManual && passwordEmail && passwordField) {
+        function togglePasswordField() {
+            if (passwordManual.checked) {
+                passwordField.style.display = 'block';
+                passwordInput.required = true;
+            } else {
+                passwordField.style.display = 'none';
+                passwordInput.required = false;
+                passwordInput.value = '';
+            }
+        }
+
+        passwordManual.addEventListener('change', togglePasswordField);
+        passwordEmail.addEventListener('change', togglePasswordField);
+
+        // Set initial state
+        togglePasswordField();
+    }
 });

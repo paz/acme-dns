@@ -251,8 +251,11 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 				flashStore,
 				userRepo,
 				recordRepo,
+				passwordResetRepo,
+				mailer,
 				"web/templates",
 				Config.General.Domain,
+				baseURL,
 			)
 			if err != nil {
 				log.WithFields(log.Fields{"error": err}).Error("Failed to initialize admin handlers")
@@ -411,6 +414,13 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 				))
 				api.POST("/admin/users/:id/toggle", web.ChainMiddleware(
 					adminHandlers.ToggleUserActive,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/admin/users/:id/reset-password", web.ChainMiddleware(
+					adminHandlers.ResetUserPassword,
 					web.CSRFMiddleware(sessionManager),
 					web.RequireAdmin(sessionManager, userRepo),
 					web.SecurityHeadersMiddleware,

@@ -490,3 +490,47 @@ button.addEventListener('click', async (e) => {
 ---
 
 *Keep this document updated as new patterns emerge*
+
+## Email Templates
+
+### 1. Sending Password Reset Emails
+
+When sending password reset emails, use HTML templates with proper formatting:
+
+**Example from admin.CreateUser:**
+```go
+// Create password reset token
+resetObj, err := h.passwordResetRepo.Create(newUser.ID, email, 24)
+if err \!= nil {
+    // Handle error
+}
+
+// Send password reset email
+resetURL := fmt.Sprintf("%s/reset-password?token=%s", h.baseURL, resetObj.Token)
+subject := "Set Your Password - acme-dns"
+body := fmt.Sprintf(`
+    <html>
+    <body>
+        <h2>Welcome to acme-dns\!</h2>
+        <p>An administrator has created an account for you. Please set your password by clicking the link below:</p>
+        <p><a href="%s">Set Password</a></p>
+        <p>This link will expire in 24 hours.</p>
+        <p>If you did not request this account, please ignore this email.</p>
+    </body>
+    </html>
+`, resetURL)
+
+if err := h.mailer.SendEmail(email, subject, body); err \!= nil {
+    // Handle error
+}
+```
+
+### 2. Email Template Best Practices
+
+- ✅ Use HTML for better formatting
+- ✅ Include clear call-to-action (link or button)
+- ✅ Specify expiration time for tokens
+- ✅ Include security notice (ignore if not requested)
+- ✅ Use baseURL from config for consistent links
+- ✅ Log email failures but continue operation if possible
+

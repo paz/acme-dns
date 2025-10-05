@@ -1,11 +1,15 @@
 package admin
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
 
+	"github.com/joohoi/acme-dns/email"
 	"github.com/joohoi/acme-dns/models"
 	"github.com/joohoi/acme-dns/web"
 	"github.com/julienschmidt/httprouter"
@@ -14,12 +18,15 @@ import (
 
 // Handlers holds dependencies for admin handlers
 type Handlers struct {
-	sessionManager *web.SessionManager
-	flashStore     *web.FlashStore
-	userRepo       UserRepository
-	recordRepo     RecordRepository
-	templates      *template.Template
-	domain         string
+	sessionManager    *web.SessionManager
+	flashStore        *web.FlashStore
+	userRepo          UserRepository
+	recordRepo        RecordRepository
+	passwordResetRepo *models.PasswordResetRepository
+	mailer            *email.Mailer
+	templates         *template.Template
+	domain            string
+	baseURL           string
 }
 
 // UserRepository interface for user operations
@@ -45,8 +52,11 @@ func NewHandlers(
 	fs *web.FlashStore,
 	userRepo UserRepository,
 	recordRepo RecordRepository,
+	passwordResetRepo *models.PasswordResetRepository,
+	mailer *email.Mailer,
 	templatesDir string, // Kept for backward compatibility but not used
 	domain string,
+	baseURL string,
 ) (*Handlers, error) {
 	// Load templates from embedded filesystem
 	templates, err := web.GetTemplates()
@@ -55,12 +65,15 @@ func NewHandlers(
 	}
 
 	return &Handlers{
-		sessionManager: sm,
-		flashStore:     fs,
-		userRepo:       userRepo,
-		recordRepo:     recordRepo,
-		templates:      templates,
-		domain:         domain,
+		sessionManager:    sm,
+		flashStore:        fs,
+		userRepo:          userRepo,
+		recordRepo:        recordRepo,
+		passwordResetRepo: passwordResetRepo,
+		mailer:            mailer,
+		templates:         templates,
+		domain:            domain,
+		baseURL:           baseURL,
 	}, nil
 }
 
@@ -209,23 +222,87 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	passwordMethod := r.FormValue("password_method")
 	isAdminStr := r.FormValue("is_admin")
 	isAdmin := isAdminStr == "true" || isAdminStr == "1"
 
-	newUser, err := h.userRepo.Create(email, password, isAdmin, 12)
-	if err != nil {
-		log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to create user")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
-		return
-	}
+	var newUser *models.User
 
-	log.WithFields(log.Fields{
-		"admin_id":     session.UserID,
-		"new_user_id":  newUser.ID,
-		"email":        email,
-		"is_admin":     isAdmin,
-	}).Info("Admin created new user")
+	if passwordMethod == "email" {
+		// Generate temporary password and send email
+		tempPassword := generateSecurePassword(16)
+
+		// Create user with temporary password
+		newUser, err = h.userRepo.Create(email, tempPassword, isAdmin, 12)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to create user")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
+			return
+		}
+
+		// Create password reset token
+		resetObj, err := h.passwordResetRepo.Create(newUser.ID, email, 24)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err, "user_id": newUser.ID}).Error("Failed to create password reset token")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create password reset token"})
+			return
+		}
+
+		// Send password reset email
+		resetURL := fmt.Sprintf("%s/reset-password?token=%s", h.baseURL, resetObj.Token)
+		subject := "Set Your Password - acme-dns"
+		body := fmt.Sprintf(`
+			<html>
+			<body>
+				<h2>Welcome to acme-dns!</h2>
+				<p>An administrator has created an account for you. Please set your password by clicking the link below:</p>
+				<p><a href="%s">Set Password</a></p>
+				<p>This link will expire in 24 hours.</p>
+				<p>If you did not request this account, please ignore this email.</p>
+			</body>
+			</html>
+		`, resetURL)
+
+		if err := h.mailer.SendEmail(email, subject, body); err != nil {
+			log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to send password reset email")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "User created but failed to send email"})
+			return
+		}
+
+		log.WithFields(log.Fields{
+			"admin_id":    session.UserID,
+			"new_user_id": newUser.ID,
+			"email":       email,
+			"is_admin":    isAdmin,
+			"method":      "email",
+		}).Info("Admin created new user with email password reset")
+	} else {
+		// Manual password set
+		if password == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Password is required for manual setup"})
+			return
+		}
+
+		newUser, err = h.userRepo.Create(email, password, isAdmin, 12)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to create user")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
+			return
+		}
+
+		log.WithFields(log.Fields{
+			"admin_id":    session.UserID,
+			"new_user_id": newUser.ID,
+			"email":       email,
+			"is_admin":    isAdmin,
+			"method":      "manual",
+		}).Info("Admin created new user with manual password")
+	}
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
@@ -279,6 +356,82 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, ps httprou
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
+}
+
+// ResetUserPassword sends a password reset email to a user
+func (h *Handlers) ResetUserPassword(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
+		return
+	}
+
+	adminUser, err := h.userRepo.GetByID(session.UserID)
+	if err != nil || !adminUser.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
+		return
+	}
+
+	userIDStr := ps.ByName("id")
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid user ID"})
+		return
+	}
+
+	// Get target user
+	targetUser, err := h.userRepo.GetByID(userID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": userID}).Error("Failed to get user for password reset")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to get user"})
+		return
+	}
+
+	// Create password reset token
+	resetObj, err := h.passwordResetRepo.Create(targetUser.ID, targetUser.Email, 24)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": targetUser.ID}).Error("Failed to create password reset token")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create password reset token"})
+		return
+	}
+
+	// Send password reset email
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", h.baseURL, resetObj.Token)
+	subject := "Password Reset - acme-dns"
+	body := fmt.Sprintf(`
+		<html>
+		<body>
+			<h2>Password Reset Request</h2>
+			<p>An administrator has initiated a password reset for your account. Click the link below to reset your password:</p>
+			<p><a href="%s">Reset Password</a></p>
+			<p>This link will expire in 24 hours.</p>
+			<p>If you did not request this password reset, please contact your administrator.</p>
+		</body>
+		</html>
+	`, resetURL)
+
+	if err := h.mailer.SendEmail(targetUser.Email, subject, body); err != nil {
+		log.WithFields(log.Fields{"error": err, "email": targetUser.Email}).Error("Failed to send password reset email")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to send email"})
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"admin_id":      session.UserID,
+		"target_user_id": targetUser.ID,
+		"email":         targetUser.Email,
+	}).Info("Admin sent password reset email to user")
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "Password reset email sent"})
 }
 
 // ToggleUserActive toggles a user's active status
@@ -625,4 +778,15 @@ func (h *Handlers) BulkDeleteDomains(w http.ResponseWriter, r *http.Request, _ h
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
+}
+
+// generateSecurePassword generates a cryptographically secure random password
+func generateSecurePassword(length int) string {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to generate secure password")
+		// Fallback to a default secure password (this should never happen)
+		return "ChangeMe123456!!"
+	}
+	return base64.URLEncoding.EncodeToString(bytes)[:length]
 }
