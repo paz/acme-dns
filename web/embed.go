@@ -17,11 +17,22 @@ var staticFS embed.FS
 
 // GetTemplates loads templates from embedded filesystem
 func GetTemplates() (*template.Template, error) {
-	// Parse all templates together so they can reference each other
-	tmpl, err := template.New("").ParseFS(templatesFS, "templates/*.html")
+	// Create a new template set
+	tmpl := template.New("")
+
+	// First parse the layout/base template
+	tmpl, err := tmpl.ParseFS(templatesFS, "templates/layout.html")
 	if err != nil {
 		return nil, err
 	}
+
+	// Then parse all other templates which define content blocks
+	tmpl, err = tmpl.ParseFS(templatesFS, "templates/login.html", "templates/dashboard.html",
+		"templates/profile.html", "templates/register.html", "templates/admin.html")
+	if err != nil {
+		return nil, err
+	}
+
 	return tmpl, nil
 }
 

@@ -85,7 +85,36 @@ func NewHandlers(
 // render executes a template by name
 func (h *Handlers) render(w http.ResponseWriter, templateName string, data *TemplateData) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	return h.templates.ExecuteTemplate(w, templateName, data)
+
+	// Map template names to their content block names
+	contentBlockMap := map[string]string{
+		"login.html":     "login-content",
+		"dashboard.html": "dashboard-content",
+		"profile.html":   "profile-content",
+		"register.html":  "register-content",
+		"admin.html":     "admin-content",
+	}
+
+	// Get the content block name for this template
+	contentBlock, ok := contentBlockMap[templateName]
+	if !ok {
+		return h.templates.ExecuteTemplate(w, templateName, data)
+	}
+
+	// Clone the base template and add the specific content block
+	tmpl, err := h.templates.Clone()
+	if err != nil {
+		return err
+	}
+
+	// Add the content block as "content" so the base template can find it
+	tmpl, err = tmpl.AddParseTree("content", h.templates.Lookup(contentBlock).Tree)
+	if err != nil {
+		return err
+	}
+
+	// Execute the base template which will now use the correct content block
+	return tmpl.ExecuteTemplate(w, "base", data)
 }
 
 // RootHandler redirects root to login or dashboard
