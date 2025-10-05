@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -253,6 +254,8 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 		// Send password reset email
 		resetURL := fmt.Sprintf("%s/reset-password?token=%s", h.baseURL, resetObj.Token)
 		subject := "Set Your Password - acme-dns"
+		// HTML-escape the URL to prevent any potential injection
+		safeResetURL := html.EscapeString(resetURL)
 		body := fmt.Sprintf(`
 			<html>
 			<body>
@@ -263,7 +266,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 				<p>If you did not request this account, please ignore this email.</p>
 			</body>
 			</html>
-		`, resetURL)
+		`, safeResetURL)
 
 		if err := h.mailer.SendEmail(email, subject, body); err != nil {
 			log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to send password reset email")
@@ -405,6 +408,8 @@ func (h *Handlers) ResetUserPassword(w http.ResponseWriter, r *http.Request, ps 
 	// Send password reset email
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", h.baseURL, resetObj.Token)
 	subject := "Password Reset - acme-dns"
+	// HTML-escape the URL to prevent any potential injection
+	safeResetURL := html.EscapeString(resetURL)
 	body := fmt.Sprintf(`
 		<html>
 		<body>
@@ -415,7 +420,7 @@ func (h *Handlers) ResetUserPassword(w http.ResponseWriter, r *http.Request, ps 
 			<p>If you did not request this password reset, please contact your administrator.</p>
 		</body>
 		</html>
-	`, resetURL)
+	`, safeResetURL)
 
 	if err := h.mailer.SendEmail(targetUser.Email, subject, body); err != nil {
 		log.WithFields(log.Fields{"error": err, "email": targetUser.Email}).Error("Failed to send password reset email")

@@ -192,8 +192,23 @@ func (m *Mailer) sendWithStartTLS(addr string, auth smtp.Auth, from, to string, 
 	return nil
 }
 
+// sanitizeEmailHeader removes newlines and other characters that could cause email header injection
+func sanitizeEmailHeader(header string) string {
+	// Remove CR and LF characters to prevent header injection
+	header = strings.ReplaceAll(header, "\r", "")
+	header = strings.ReplaceAll(header, "\n", "")
+	// Remove NULL bytes
+	header = strings.ReplaceAll(header, "\x00", "")
+	return header
+}
+
 // buildMessage builds an RFC 5322 email message
 func buildMessage(from, to, subject, body string) []byte {
+	// Sanitize all header fields to prevent injection attacks
+	from = sanitizeEmailHeader(from)
+	to = sanitizeEmailHeader(to)
+	subject = sanitizeEmailHeader(subject)
+
 	msg := fmt.Sprintf("From: %s\r\n", from)
 	msg += fmt.Sprintf("To: %s\r\n", to)
 	msg += fmt.Sprintf("Subject: %s\r\n", subject)
