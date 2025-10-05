@@ -13,7 +13,7 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.32
-	github.com/mholt/acmez/v2 v2.0.3
+	github.com/mholt/acmez/v3 v3.1.3
 	github.com/miekg/dns v1.1.68
 	github.com/rs/cors v1.11.1
 	github.com/sirupsen/logrus v1.9.3
@@ -35,7 +35,6 @@ require (
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
-	github.com/mholt/acmez/v3 v3.1.3 // indirect
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.38.2 // indirect
