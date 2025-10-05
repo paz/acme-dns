@@ -211,6 +211,7 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 			flashStore,
 			userRepo,
 			recordRepo,
+			sessionRepo,
 			"web/templates",
 			webConfig,
 			Config.General.Domain,
@@ -288,6 +289,29 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 				))
 				api.POST("/dashboard/domain/:username/description", web.ChainMiddleware(
 					webHandlers.UpdateDomainDescription,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+
+				// Profile routes
+				api.GET("/profile", web.ChainMiddleware(
+					webHandlers.ProfilePage,
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.LoggingMiddleware,
+				))
+				api.POST("/profile/password", web.ChainMiddleware(
+					webHandlers.ChangePassword,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAuth(sessionManager),
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.LoggingMiddleware,
+				))
+				api.DELETE("/profile/sessions/:id", web.ChainMiddleware(
+					webHandlers.RevokeSession,
 					web.CSRFMiddleware(sessionManager),
 					web.RequireAuth(sessionManager),
 					web.SecurityHeadersMiddleware,

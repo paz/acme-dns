@@ -1,4 +1,4 @@
-{{define "content"}}
+{{define "dashboard-content"}}
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -8,62 +8,47 @@
             </button>
         </div>
 
-        {{if not .Data.Records}}
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> You don't have any registered domains yet. Click "Register New Domain" to get started.
+        {{if .Data.Domains}}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Subdomain</th>
+                        <th>Full Domain</th>
+                        <th>Description</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Data.Domains}}
+                    <tr>
+                        <td><code>{{.Subdomain}}</code></td>
+                        <td><code>{{.Subdomain}}.{{$.Data.Domain}}</code></td>
+                        <td>{{if .Description}}{{.Description}}{{else}}-{{end}}</td>
+                        <td>{{if .CreatedAt}}{{.CreatedAt.Format "2006-01-02"}}{{else}}-{{end}}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="viewCredentials('{{.Username}}')">
+                                <i class="bi bi-key"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteDomain('{{.Username}}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Your Domains</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Full Domain</th>
-                                <th>Subdomain</th>
-                                <th>Description</th>
-                                <th>CIDR Restrictions</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {{range .Data.Records}}
-                            <tr>
-                                <td><code>{{.Subdomain}}.{{$.Data.Domain}}</code></td>
-                                <td><code>{{.Subdomain}}</code></td>
-                                <td>{{if .Description}}{{.Description}}{{else}}<em>No description</em>{{end}}</td>
-                                <td>
-                                    {{if .AllowFrom}}
-                                    {{range .AllowFrom}}<span class="badge bg-secondary">{{.}}</span> {{end}}
-                                    {{else}}
-                                    <span class="text-muted">Any IP</span>
-                                    {{end}}
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-primary" onclick="viewCredentials('{{.Username}}')">
-                                            <i class="bi bi-key"></i> Credentials
-                                        </button>
-                                        <button class="btn btn-outline-danger" onclick="deleteDomain('{{.Username}}', '{{.Subdomain}}')">
-                                            <i class="bi bi-trash"></i> Delete
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> You don't have any domains yet. Click "Register New Domain" to get started!
         </div>
         {{end}}
     </div>
 </div>
 
-<!-- Register Domain Modal -->
+<!-- Register Modal -->
 <div class="modal fade" id="registerModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -71,26 +56,22 @@
                 <h5 class="modal-title">Register New Domain</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="registerForm">
+            <form method="POST" action="/dashboard/register">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="modal-body">
-                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-
                     <div class="mb-3">
                         <label for="description" class="form-label">Description (optional)</label>
-                        <input type="text" class="form-control" id="description" name="description"
-                               placeholder="e.g., Production Server, My Blog">
+                        <input type="text" class="form-control" id="description" name="description" placeholder="e.g., example.com wildcard cert">
                     </div>
-
                     <div class="mb-3">
-                        <label for="allowfrom" class="form-label">Allowed IPs (CIDR, optional)</label>
-                        <textarea class="form-control" id="allowfrom" name="allowfrom" rows="3"
-                                  placeholder='["192.168.1.0/24", "10.0.0.1/32"]'></textarea>
-                        <small class="form-text text-muted">Leave empty to allow from any IP</small>
+                        <label for="allowfrom" class="form-label">Allowed IPs (optional, comma-separated CIDR)</label>
+                        <input type="text" class="form-control" id="allowfrom" name="allowfrom" placeholder="e.g., 192.168.1.0/24">
+                        <small class="text-muted">Leave empty to allow from any IP</small>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Register</button>
+                    <button type="submit" class="btn btn-primary">Register Domain</button>
                 </div>
             </form>
         </div>
@@ -106,53 +87,81 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i> Keep these credentials secure. They allow updating DNS records for this domain.
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Username</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="cred-username" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('cred-username')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
+                <div id="credentialsContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
                     </div>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="cred-password" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('cred-password')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Full Domain</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="cred-fulldomain" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('cred-fulldomain')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Example curl command</label>
-                    <pre class="bg-light p-3 rounded"><code id="curl-example"></code></pre>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-const csrfToken = '{{.CSRFToken}}';
+function viewCredentials(username) {
+    const modal = new bootstrap.Modal(document.getElementById('credentialsModal'));
+    modal.show();
+
+    fetch('/dashboard/domain/' + username + '/credentials')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('credentialsContent').innerHTML = \`
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Keep these credentials secure!</strong> They cannot be retrieved again.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="\${data.username}" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.username}')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="\${data.password}" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.password}')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Full Domain</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="\${data.fulldomain}" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.fulldomain}')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+            \`;
+        });
+}
+
+function deleteDomain(username) {
+    if (!confirm('Are you sure you want to delete this domain? This action cannot be undone.')) {
+        return;
+    }
+
+    fetch('/dashboard/domain/' + username, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-Token': '{{.CSRFToken}}'
+        }
+    }).then(() => {
+        window.location.reload();
+    });
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard!');
+    });
+}
 </script>
 {{end}}

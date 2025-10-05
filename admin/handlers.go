@@ -64,6 +64,15 @@ func NewHandlers(
 	}, nil
 }
 
+// render executes the base template with the appropriate content template
+func (h *Handlers) render(w http.ResponseWriter, contentTemplate string, data *web.TemplateData) error {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Store which content template to use
+	data.Data["ContentTemplate"] = contentTemplate
+	// Execute the base template
+	return h.templates.ExecuteTemplate(w, "base", data)
+}
+
 // Dashboard displays the admin dashboard
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	session, err := h.sessionManager.GetSession(r)
@@ -115,8 +124,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httproute
 		"ManagedCount":    len(records) - len(unmanagedRecords),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.templates.ExecuteTemplate(w, "admin-page.html", data); err != nil {
+	if err := h.render(w, "admin-content", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render admin template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

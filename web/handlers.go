@@ -17,6 +17,7 @@ type Handlers struct {
 	flashStore     *FlashStore
 	userRepo       UserRepository
 	recordRepo     RecordRepository
+	sessionRepo    SessionRepositoryInterface
 	templates      *template.Template
 	config         WebConfig
 	domain         string
@@ -33,6 +34,14 @@ type UserRepository interface {
 	Authenticate(email, password string) (*models.User, error)
 	GetByID(id int64) (*models.User, error)
 	Create(email, password string, isAdmin bool, bcryptCost int) (*models.User, error)
+	ChangePassword(userID int64, newPassword string, bcryptCost int) error
+}
+
+// SessionRepositoryInterface for session operations (profile page needs this)
+type SessionRepositoryInterface interface {
+	Get(sessionID string) (*models.Session, error)
+	Delete(sessionID string) error
+	ListByUserID(userID int64) ([]*models.Session, error)
 }
 
 // RecordRepository interface for record operations
@@ -49,6 +58,7 @@ func NewHandlers(
 	fs *FlashStore,
 	userRepo UserRepository,
 	recordRepo RecordRepository,
+	sessionRepo SessionRepositoryInterface,
 	templatesDir string, // Kept for backward compatibility but not used
 	config WebConfig,
 	domain string,
@@ -64,6 +74,7 @@ func NewHandlers(
 		flashStore:     fs,
 		userRepo:       userRepo,
 		recordRepo:     recordRepo,
+		sessionRepo:    sessionRepo,
 		templates:      templates,
 		config:         config,
 		domain:         domain,
@@ -220,8 +231,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httproute
 	data.Data["Domains"] = records
 	data.Data["Domain"] = h.domain
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.templates.ExecuteTemplate(w, "dashboard-page.html", data); err != nil {
+	if err := h.render(w, "dashboard-content", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render dashboard template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -404,9 +414,14 @@ func (h *Handlers) RegisterPage(w http.ResponseWriter, r *http.Request, _ httpro
 	data := h.sessionManager.NewTemplateData(r, h.flashStore, "Register")
 	data.Data["MinPasswordLength"] = h.config.MinPasswordLength
 
-	// Would render a register template (not yet created)
-	if _, err := w.Write([]byte("Register page - to be implemented with template")); err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Failed to write response")
+	// Get error from query param if any
+	if errorType := r.URL.Query().Get("error"); errorType != "" {
+		data.Data["error"] = errorType
+	}
+
+	if err := h.render(w, "register-content", data); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to render register template")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
@@ -451,4 +466,140 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request, _ httpro
 	}
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+// ProfilePage displays the user profile page
+func (h *Handlers) ProfilePage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	// Get user info
+	user, err := h.userRepo.GetByID(session.UserID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": session.UserID}).Error("Failed to get user")
+		http.Error(w, "Failed to load user", http.StatusInternalServerError)
+		return
+	}
+
+	// Get user's active sessions
+	sessions, err := h.sessionRepo.ListByUserID(session.UserID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": session.UserID}).Error("Failed to list sessions")
+		// Continue without sessions
+		sessions = []*models.Session{}
+	}
+
+	// Prepare template data
+	data := h.sessionManager.NewTemplateData(r, h.flashStore, "Profile")
+	data.User = user
+	data.IsAdmin = user.IsAdmin
+	data.Data["Sessions"] = sessions
+	data.Data["CurrentSessionID"] = session.ID
+
+	if err := h.render(w, "profile-content", data); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to render profile template")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// ChangePassword handles password change requests
+func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	currentPassword := r.FormValue("current_password")
+	newPassword := r.FormValue("new_password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	// Validate passwords match
+	if newPassword != confirmPassword {
+		h.sessionManager.AddFlash(r, h.flashStore, "error", "New passwords do not match")
+		http.Redirect(w, r, "/profile", http.StatusSeeOther)
+		return
+	}
+
+	// Validate password length
+	if len(newPassword) < 12 {
+		h.sessionManager.AddFlash(r, h.flashStore, "error", "Password must be at least 12 characters")
+		http.Redirect(w, r, "/profile", http.StatusSeeOther)
+		return
+	}
+
+	// Get user to verify current password
+	user, err := h.userRepo.GetByID(session.UserID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": session.UserID}).Error("Failed to get user")
+		http.Error(w, "Failed to load user", http.StatusInternalServerError)
+		return
+	}
+
+	// Verify current password by trying to authenticate
+	if _, err := h.userRepo.Authenticate(user.Email, currentPassword); err != nil {
+		h.sessionManager.AddFlash(r, h.flashStore, "error", "Current password is incorrect")
+		http.Redirect(w, r, "/profile", http.StatusSeeOther)
+		return
+	}
+
+	// Change password
+	if err := h.userRepo.ChangePassword(session.UserID, newPassword, 12); err != nil {
+		log.WithFields(log.Fields{"error": err, "user_id": session.UserID}).Error("Failed to change password")
+		h.sessionManager.AddFlash(r, h.flashStore, "error", "Failed to change password")
+		http.Redirect(w, r, "/profile", http.StatusSeeOther)
+		return
+	}
+
+	log.WithFields(log.Fields{"user_id": session.UserID}).Info("User changed password")
+	h.sessionManager.AddFlash(r, h.flashStore, "success", "Password changed successfully")
+	http.Redirect(w, r, "/profile", http.StatusSeeOther)
+}
+
+// RevokeSession revokes a specific session
+func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := ps.ByName("id")
+
+	// Verify the session belongs to the current user
+	targetSession, err := h.sessionRepo.Get(sessionID)
+	if err != nil {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	if targetSession.UserID != session.UserID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Prevent revoking current session
+	if sessionID == session.ID {
+		http.Error(w, "Cannot revoke current session", http.StatusBadRequest)
+		return
+	}
+
+	// Delete the session
+	if err := h.sessionRepo.Delete(sessionID); err != nil {
+		log.WithFields(log.Fields{"error": err, "session_id": sessionID}).Error("Failed to delete session")
+		http.Error(w, "Failed to revoke session", http.StatusInternalServerError)
+		return
+	}
+
+	log.WithFields(log.Fields{"user_id": session.UserID, "revoked_session": sessionID}).Info("User revoked session")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"success"}`))
 }
