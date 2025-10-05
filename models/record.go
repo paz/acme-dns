@@ -116,7 +116,9 @@ func (rr *RecordRepository) ListByUserID(userID int64) ([]*Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list records: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var records []*Record
 	for rows.Next() {
@@ -179,7 +181,9 @@ func (rr *RecordRepository) ListAll() ([]*Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list all records: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var records []*Record
 	for rows.Next() {
@@ -243,7 +247,9 @@ func (rr *RecordRepository) ListUnmanaged() ([]*Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list unmanaged records: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var records []*Record
 	for rows.Next() {

@@ -142,7 +142,9 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 	// Setup http logger
 	logger := log.New()
 	logwriter := logger.Writer()
-	defer logwriter.Close()
+	defer func() {
+		_ = logwriter.Close()
+	}()
 	// Setup logging for different dependencies to log with logrus
 	// Certmagic
 	stdlog.SetOutput(logwriter)

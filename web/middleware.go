@@ -281,7 +281,7 @@ func CSRFMiddleware(sm *SessionManager) func(httprouter.Handle) httprouter.Handl
 			if err != nil || session == nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"status": "error", "message": "Invalid session"}`))
+				_, _ = w.Write([]byte(`{"status": "error", "message": "Invalid session"}`))
 				return
 			}
 
@@ -289,7 +289,7 @@ func CSRFMiddleware(sm *SessionManager) func(httprouter.Handle) httprouter.Handl
 			if csrfToken == "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"status": "error", "message": "CSRF token not found"}`))
+				_, _ = w.Write([]byte(`{"status": "error", "message": "CSRF token not found"}`))
 				return
 			}
 
@@ -318,7 +318,7 @@ func CSRFMiddleware(sm *SessionManager) func(httprouter.Handle) httprouter.Handl
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"status": "error", "message": "Invalid CSRF token"}`))
+				_, _ = w.Write([]byte(`{"status": "error", "message": "Invalid CSRF token"}`))
 				return
 			}
 

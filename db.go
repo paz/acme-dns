@@ -233,7 +233,9 @@ func (d *acmedb) Register(afrom cidrslice) (ACMETxt, error) {
 		log.WithFields(log.Fields{"error": err.Error()}).Error("Database error in prepare")
 		return a, errors.New("SQL error")
 	}
-	defer sm.Close()
+	defer func() {
+		_ = sm.Close()
+	}()
 	_, err = sm.Exec(a.Username.String(), passwordHash, a.Subdomain, a.AllowFrom.JSON())
 	if err == nil {
 		err = d.NewTXTValuesInTransaction(tx, a.Subdomain)
@@ -258,7 +260,9 @@ func (d *acmedb) GetByUsername(u uuid.UUID) (ACMETxt, error) {
 	if err != nil {
 		return ACMETxt{}, err
 	}
-	defer sm.Close()
+	defer func() {
+		_ = sm.Close()
+	}()
 	rows, err := sm.Query(u.String())
 	if err != nil {
 		return ACMETxt{}, err
@@ -295,7 +299,9 @@ func (d *acmedb) GetTXTForDomain(domain string) ([]string, error) {
 	if err != nil {
 		return txts, err
 	}
-	defer sm.Close()
+	defer func() {
+		_ = sm.Close()
+	}()
 	rows, err := sm.Query(domain)
 	if err != nil {
 		return txts, err
@@ -333,7 +339,9 @@ func (d *acmedb) Update(a ACMETxtPost) error {
 	if err != nil {
 		return err
 	}
-	defer sm.Close()
+	defer func() {
+		_ = sm.Close()
+	}()
 	_, err = sm.Exec(a.Value, timenow, a.Subdomain)
 	if err != nil {
 		return err
@@ -363,7 +371,7 @@ func getModelFromRow(r *sql.Rows) (ACMETxt, error) {
 }
 
 func (d *acmedb) Close() {
-	d.DB.Close()
+	_ = d.DB.Close()
 }
 
 func (d *acmedb) GetBackend() *sql.DB {

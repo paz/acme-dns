@@ -635,7 +635,7 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	session, err := h.sessionManager.GetSession(r)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
@@ -645,13 +645,13 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	targetSession, err := h.sessionRepo.Get(sessionID)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Session not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Session not found"})
 		return
 	}
 
 	if targetSession.UserID != session.UserID {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
 		return
 	}
 

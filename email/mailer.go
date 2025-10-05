@@ -83,7 +83,9 @@ func (m *Mailer) sendWithTLS(addr string, auth smtp.Auth, from, to string, msg [
 		log.WithFields(log.Fields{"error": err, "addr": addr}).Error("Failed to connect with TLS")
 		return fmt.Errorf("TLS connection failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, m.config.SMTPHost)
@@ -91,7 +93,9 @@ func (m *Mailer) sendWithTLS(addr string, auth smtp.Auth, from, to string, msg [
 		log.WithFields(log.Fields{"error": err}).Error("Failed to create SMTP client")
 		return fmt.Errorf("SMTP client creation failed: %w", err)
 	}
-	defer client.Quit()
+	defer func() {
+		_ = client.Quit()
+	}()
 
 	// Authenticate
 	if auth != nil {
@@ -136,7 +140,9 @@ func (m *Mailer) sendWithStartTLS(addr string, auth smtp.Auth, from, to string, 
 		log.WithFields(log.Fields{"error": err, "addr": addr}).Error("Failed to connect to SMTP server")
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, m.config.SMTPHost)
@@ -144,7 +150,9 @@ func (m *Mailer) sendWithStartTLS(addr string, auth smtp.Auth, from, to string, 
 		log.WithFields(log.Fields{"error": err}).Error("Failed to create SMTP client")
 		return fmt.Errorf("SMTP client creation failed: %w", err)
 	}
-	defer client.Quit()
+	defer func() {
+		_ = client.Quit()
+	}()
 
 	// STARTTLS
 	tlsConfig := &tls.Config{
