@@ -70,6 +70,16 @@ func NewHandlers(
 	}, nil
 }
 
+// RootHandler redirects root to login or dashboard
+func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// Check if already logged in
+	if _, err := h.sessionManager.GetSession(r); err == nil {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
 // LoginPage displays the login page
 func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check if already logged in
@@ -87,7 +97,9 @@ func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request, _ httproute
 		data.Data["Redirect"] = redirect
 	}
 
-	if err := h.templates.ExecuteTemplate(w, "login.html", data); err != nil {
+	// Execute login page template
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.templates.ExecuteTemplate(w, "login-page.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render login template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -195,10 +207,11 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httproute
 	data := h.sessionManager.NewTemplateData(r, h.flashStore, "Dashboard")
 	data.User = user
 	data.IsAdmin = user.IsAdmin
-	data.Data["Records"] = records
+	data.Data["Domains"] = records
 	data.Data["Domain"] = h.domain
 
-	if err := h.templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.templates.ExecuteTemplate(w, "dashboard-page.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render dashboard template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

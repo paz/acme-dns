@@ -233,6 +233,12 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 				// Serve static files from embedded filesystem
 				api.Handler("GET", "/static/*filepath", http.StripPrefix("/static", web.GetStaticHandler()))
 
+				// Root route
+				api.GET("/", web.ChainMiddleware(
+					webHandlers.RootHandler,
+					web.LoggingMiddleware,
+				))
+
 				// Public routes
 				api.GET("/login", web.ChainMiddleware(
 					webHandlers.LoginPage,

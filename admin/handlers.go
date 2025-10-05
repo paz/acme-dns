@@ -115,7 +115,8 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request, _ httproute
 		"ManagedCount":    len(records) - len(unmanagedRecords),
 	}
 
-	if err := h.templates.ExecuteTemplate(w, "admin.html", data); err != nil {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.templates.ExecuteTemplate(w, "admin-page.html", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render admin template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

@@ -17,7 +17,12 @@ var staticFS embed.FS
 
 // GetTemplates loads templates from embedded filesystem
 func GetTemplates() (*template.Template, error) {
-	return template.ParseFS(templatesFS, "templates/*.html")
+	// Parse all templates together so they can reference each other
+	tmpl, err := template.New("").ParseFS(templatesFS, "templates/*.html")
+	if err != nil {
+		return nil, err
+	}
+	return tmpl, nil
 }
 
 // GetStaticHandler returns an http.Handler for serving static files
