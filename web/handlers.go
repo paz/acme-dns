@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/joohoi/acme-dns/models"
 	"github.com/julienschmidt/httprouter"
@@ -123,12 +124,33 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request, _ httproute
 
 	log.WithFields(log.Fields{"user_id": user.ID, "email": email}).Info("User logged in")
 
-	// Redirect to dashboard or requested page
-	if redirect != "" && redirect[0] == '/' {
-		http.Redirect(w, r, redirect, http.StatusSeeOther)
-	} else {
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	// Redirect to dashboard or requested page (with safe redirect validation)
+	redirectURL := "/dashboard" // Default safe redirect
+	if redirect != "" && isValidLocalRedirect(redirect) {
+		redirectURL = redirect
 	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+// isValidLocalRedirect checks if a redirect URL is safe (local path only)
+func isValidLocalRedirect(redirect string) bool {
+	// Must start with /
+	if len(redirect) == 0 || redirect[0] != '/' {
+		return false
+	}
+	// Must not be protocol-relative (// or \/)
+	if len(redirect) > 1 && (redirect[1] == '/' || redirect[1] == '\\') {
+		return false
+	}
+	// Must not contain absolute URL schemes
+	if strings.Contains(redirect, "://") {
+		return false
+	}
+	// Must not be just /
+	if redirect == "/" {
+		return false
+	}
+	return true
 }
 
 // Logout handles user logout

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	stdlog "log"
 	"net/http"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	legolog "github.com/go-acme/lego/v3/log"
+	legolog "github.com/go-acme/lego/v4/log"
 	"github.com/joohoi/acme-dns/admin"
 	"github.com/joohoi/acme-dns/models"
 	"github.com/joohoi/acme-dns/web"
@@ -72,7 +73,8 @@ func main() {
 	// Handle create admin flag
 	if *createAdminPtr != "" {
 		if err := CreateAdminUser(*createAdminPtr); err != nil {
-			log.Errorf("Error creating admin user: %v", err)
+			log.Error("Error creating admin user")
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
