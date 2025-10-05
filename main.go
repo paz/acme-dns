@@ -319,13 +319,14 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 				))
 
 				// Registration routes (if self-registration enabled)
+				// Note: Using /signup for user registration to avoid conflict with API /register endpoint
 				if Config.WebUI.AllowSelfRegistration {
-					api.GET("/register", web.ChainMiddleware(
+					api.GET("/signup", web.ChainMiddleware(
 						webHandlers.RegisterPage,
 						web.SecurityHeadersMiddleware,
 						web.LoggingMiddleware,
 					))
-					api.POST("/register", web.ChainMiddleware(
+					api.POST("/signup", web.ChainMiddleware(
 						webHandlers.RegisterPost,
 						web.SecurityHeadersMiddleware,
 						web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
