@@ -338,7 +338,9 @@ func (h *Handlers) ListUnmanagedDomains(w http.ResponseWriter, r *http.Request, 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(records)
+	if err := json.NewEncoder(w).Encode(records); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // ClaimDomain assigns an unmanaged domain to a user
@@ -385,7 +387,9 @@ func (h *Handlers) ClaimDomain(w http.ResponseWriter, r *http.Request, ps httpro
 	}).Info("Admin claimed domain for user")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
 
 // DeleteDomain deletes any domain (admin override)
@@ -417,5 +421,7 @@ func (h *Handlers) DeleteDomain(w http.ResponseWriter, r *http.Request, ps httpr
 	}).Info("Admin deleted domain")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
 }
