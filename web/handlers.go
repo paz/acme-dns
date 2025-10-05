@@ -70,6 +70,17 @@ func NewHandlers(
 	}, nil
 }
 
+// render executes the base template with the appropriate content template
+func (h *Handlers) render(w http.ResponseWriter, contentTemplate string, data *TemplateData) error {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	// Store which content template to use
+	data.Data["ContentTemplate"] = contentTemplate
+
+	// Execute the base template
+	return h.templates.ExecuteTemplate(w, "base", data)
+}
+
 // RootHandler redirects root to login or dashboard
 func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check if already logged in
@@ -97,9 +108,8 @@ func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request, _ httproute
 		data.Data["Redirect"] = redirect
 	}
 
-	// Execute login page template
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.templates.ExecuteTemplate(w, "login-page.html", data); err != nil {
+	// Render login page
+	if err := h.render(w, "login-content", data); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to render login template")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
