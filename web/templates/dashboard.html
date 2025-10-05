@@ -28,10 +28,10 @@
                         <td>{{if .Description}}{{.Description}}{{else}}-{{end}}</td>
                         <td>{{if .CreatedAt}}{{.CreatedAt.Format "2006-01-02"}}{{else}}-{{end}}</td>
                         <td>
-                            <button class="btn btn-sm btn-info" onclick="viewCredentials('{{.Username}}')">
+                            <button class="btn btn-sm btn-info view-credentials" data-username="{{.Username}}">
                                 <i class="bi bi-key"></i>
                             </button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteDomain('{{.Username}}')">
+                            <button class="btn btn-sm btn-danger delete-domain" data-username="{{.Username}}">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </td>
@@ -100,47 +100,78 @@
 </div>
 
 <script>
+// Use event delegation to avoid XSS via onclick attributes
+document.addEventListener('DOMContentLoaded', function() {
+    // View credentials buttons
+    document.querySelectorAll('.view-credentials').forEach(btn => {
+        btn.addEventListener('click', function() {
+            viewCredentials(this.dataset.username);
+        });
+    });
+
+    // Delete domain buttons
+    document.querySelectorAll('.delete-domain').forEach(btn => {
+        btn.addEventListener('click', function() {
+            deleteDomain(this.dataset.username);
+        });
+    });
+});
+
 function viewCredentials(username) {
     const modal = new bootstrap.Modal(document.getElementById('credentialsModal'));
     modal.show();
 
-    fetch('/dashboard/domain/' + username + '/credentials')
+    fetch('/dashboard/domain/' + encodeURIComponent(username) + '/credentials')
         .then(r => r.json())
         .then(data => {
-            document.getElementById('credentialsContent').innerHTML = \`
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i>
-                    <strong>Keep these credentials secure!</strong> They cannot be retrieved again.
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Username</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" value="\${data.username}" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.username}')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" value="\${data.password}" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.password}')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Full Domain</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" value="\${data.fulldomain}" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('\${data.fulldomain}')">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-            \`;
+            const container = document.getElementById('credentialsContent');
+            container.innerHTML = ''; // Clear first
+
+            // Build DOM safely without innerHTML to prevent XSS
+            const warning = document.createElement('div');
+            warning.className = 'alert alert-warning';
+            warning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> <strong>Keep these credentials secure!</strong> They cannot be retrieved again.';
+            container.appendChild(warning);
+
+            // Username field
+            container.appendChild(createCredentialField('Username', data.username));
+            // Password field
+            container.appendChild(createCredentialField('Password', data.password));
+            // Full domain field
+            container.appendChild(createCredentialField('Full Domain', data.fulldomain));
+        })
+        .catch(err => {
+            document.getElementById('credentialsContent').textContent = 'Error loading credentials';
         });
+}
+
+function createCredentialField(label, value) {
+    const div = document.createElement('div');
+    div.className = 'mb-3';
+
+    const labelEl = document.createElement('label');
+    labelEl.className = 'form-label';
+    labelEl.textContent = label;
+    div.appendChild(labelEl);
+
+    const inputGroup = document.createElement('div');
+    inputGroup.className = 'input-group';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.value = value; // Safe - direct property assignment
+    input.readOnly = true;
+    inputGroup.appendChild(input);
+
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary';
+    button.innerHTML = '<i class="bi bi-clipboard"></i>';
+    button.addEventListener('click', () => copyToClipboard(value));
+    inputGroup.appendChild(button);
+
+    div.appendChild(inputGroup);
+    return div;
 }
 
 function deleteDomain(username) {
@@ -148,19 +179,23 @@ function deleteDomain(username) {
         return;
     }
 
-    fetch('/dashboard/domain/' + username, {
+    fetch('/dashboard/domain/' + encodeURIComponent(username), {
         method: 'DELETE',
         headers: {
             'X-CSRF-Token': '{{.CSRFToken}}'
         }
     }).then(() => {
         window.location.reload();
+    }).catch(err => {
+        alert('Failed to delete domain');
     });
 }
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
         alert('Copied to clipboard!');
+    }).catch(() => {
+        alert('Failed to copy to clipboard');
     });
 }
 </script>
