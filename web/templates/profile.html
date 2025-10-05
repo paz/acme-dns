@@ -83,7 +83,7 @@
                                 </small>
                             </div>
                             {{if ne .ID $.Data.CurrentSessionID}}
-                            <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('{{.ID}}')">
+                            <button class="btn btn-sm btn-outline-danger revoke-session-btn" data-session-id="{{.ID}}">
                                 <i class="bi bi-x-circle"></i> Revoke
                             </button>
                             {{else}}
@@ -102,25 +102,4 @@
         </div>
     </div>
 </div>
-
-<script>
-function revokeSession(sessionId) {
-    if (!confirm('Are you sure you want to revoke this session?')) {
-        return;
-    }
-
-    fetch('/profile/sessions/' + sessionId, {
-        method: 'DELETE',
-        headers: {
-            'X-CSRF-Token': '{{.CSRFToken}}'
-        }
-    }).then(response => {
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            alert('Failed to revoke session');
-        }
-    });
-}
-</script>
 {{end}}

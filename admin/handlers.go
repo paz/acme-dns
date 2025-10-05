@@ -185,20 +185,25 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request, _ httproute
 
 // CreateUser creates a new user
 func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
 	session, err := h.sessionManager.GetSession(r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
 	adminUser, err := h.userRepo.GetByID(session.UserID)
 	if err != nil || !adminUser.IsAdmin {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid form data"})
 		return
 	}
 
@@ -210,7 +215,8 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 	newUser, err := h.userRepo.Create(email, password, isAdmin, 12)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to create user")
-		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
 		return
 	}
 
@@ -221,7 +227,6 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 		"is_admin":     isAdmin,
 	}).Info("Admin created new user")
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
@@ -380,29 +385,35 @@ func (h *Handlers) ListUnmanagedDomains(w http.ResponseWriter, r *http.Request, 
 
 // ClaimDomain assigns an unmanaged domain to a user
 func (h *Handlers) ClaimDomain(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
 	session, err := h.sessionManager.GetSession(r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
 	adminUser, err := h.userRepo.GetByID(session.UserID)
 	if err != nil || !adminUser.IsAdmin {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
 		return
 	}
 
 	username := ps.ByName("username")
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid form data"})
 		return
 	}
 
 	userIDStr := r.FormValue("user_id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid user ID"})
 		return
 	}
 
@@ -411,7 +422,8 @@ func (h *Handlers) ClaimDomain(w http.ResponseWriter, r *http.Request, ps httpro
 	err = h.recordRepo.ClaimRecord(username, userID, description)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "username": username, "user_id": userID}).Error("Failed to claim record")
-		http.Error(w, "Failed to claim domain: "+err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to claim domain: " + err.Error()})
 		return
 	}
 
@@ -421,7 +433,6 @@ func (h *Handlers) ClaimDomain(w http.ResponseWriter, r *http.Request, ps httpro
 		"user_id":   userID,
 	}).Info("Admin claimed domain for user")
 
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
@@ -457,6 +468,161 @@ func (h *Handlers) DeleteDomain(w http.ResponseWriter, r *http.Request, ps httpr
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
+}
+
+// BulkClaimDomains claims multiple domains for a user
+func (h *Handlers) BulkClaimDomains(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
+		return
+	}
+
+	adminUser, err := h.userRepo.GetByID(session.UserID)
+	if err != nil || !adminUser.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
+		return
+	}
+
+	// Parse JSON request body
+	var req struct {
+		Usernames   []string `json:"usernames"`
+		UserID      int64    `json:"user_id"`
+		Description string   `json:"description"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid request body"})
+		return
+	}
+
+	if len(req.Usernames) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "No usernames provided"})
+		return
+	}
+
+	if req.UserID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "User ID is required"})
+		return
+	}
+
+	// Process each domain
+	var successCount, failCount int
+	var errors []string
+
+	for _, username := range req.Usernames {
+		err = h.recordRepo.ClaimRecord(username, req.UserID, req.Description)
+		if err != nil {
+			failCount++
+			errors = append(errors, username+": "+err.Error())
+			log.WithFields(log.Fields{"error": err, "username": username, "user_id": req.UserID}).Error("Failed to claim record in bulk operation")
+		} else {
+			successCount++
+		}
+	}
+
+	log.WithFields(log.Fields{
+		"admin_id":      session.UserID,
+		"user_id":       req.UserID,
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"total":         len(req.Usernames),
+	}).Info("Admin bulk claimed domains")
+
+	response := map[string]interface{}{
+		"status":        "success",
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"total":         len(req.Usernames),
+	}
+
+	if failCount > 0 {
+		response["errors"] = errors
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
+	}
+}
+
+// BulkDeleteDomains deletes multiple domains
+func (h *Handlers) BulkDeleteDomains(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
+	session, err := h.sessionManager.GetSession(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
+		return
+	}
+
+	adminUser, err := h.userRepo.GetByID(session.UserID)
+	if err != nil || !adminUser.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
+		return
+	}
+
+	// Parse JSON request body
+	var req struct {
+		Usernames []string `json:"usernames"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid request body"})
+		return
+	}
+
+	if len(req.Usernames) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "No usernames provided"})
+		return
+	}
+
+	// Process each domain
+	var successCount, failCount int
+	var errors []string
+
+	for _, username := range req.Usernames {
+		err = h.recordRepo.DeleteByAdmin(username)
+		if err != nil {
+			failCount++
+			errors = append(errors, username+": "+err.Error())
+			log.WithFields(log.Fields{"error": err, "username": username}).Error("Failed to delete domain in bulk operation")
+		} else {
+			successCount++
+		}
+	}
+
+	log.WithFields(log.Fields{
+		"admin_id":      session.UserID,
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"total":         len(req.Usernames),
+	}).Info("Admin bulk deleted domains")
+
+	response := map[string]interface{}{
+		"status":        "success",
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"total":         len(req.Usernames),
+	}
+
+	if failCount > 0 {
+		response["errors"] = errors
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
 }

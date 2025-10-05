@@ -1,3 +1,15 @@
+// Get CSRF token from meta tag
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// Cache the CSRF token on page load
+let csrfToken = '';
+document.addEventListener('DOMContentLoaded', () => {
+    csrfToken = getCSRFToken();
+});
+
 // Helper function to copy text to clipboard
 function copyToClipboard(elementId) {
     const element = document.getElementById(elementId);
@@ -44,58 +56,84 @@ function createToastContainer() {
     return container;
 }
 
-// Dashboard functions
+// Dashboard functions - View credentials
 function viewCredentials(username) {
-    fetch(`/dashboard/domain/${username}/credentials`, {
-        headers: {
-            'X-CSRF-Token': csrfToken
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('cred-username').value = data.username;
-        document.getElementById('cred-password').value = data.password;
-        document.getElementById('cred-fulldomain').value = data.fulldomain;
+    const modal = new bootstrap.Modal(document.getElementById('credentialsModal'));
+    modal.show();
 
-        // Generate curl example
-        const curlCmd = `curl -X POST https://auth.example.org/update \\
-  -H "X-Api-User: ${data.username}" \\
-  -H "X-Api-Key: ${data.password}" \\
-  -d '{"subdomain": "${data.subdomain}", "txt": "___validation_token_received_from_the_ca___"}'`;
-        document.getElementById('curl-example').textContent = curlCmd;
+    fetch('/dashboard/domain/' + encodeURIComponent(username) + '/credentials')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('credentialsContent');
+            container.innerHTML = ''; // Clear first
 
-        const modal = new bootstrap.Modal(document.getElementById('credentialsModal'));
-        modal.show();
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('Failed to load credentials', 'danger');
-    });
+            // Build DOM safely without innerHTML to prevent XSS
+            const warning = document.createElement('div');
+            warning.className = 'alert alert-warning';
+            warning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> <strong>Keep these credentials secure!</strong> They cannot be retrieved again.';
+            container.appendChild(warning);
+
+            // Username field
+            container.appendChild(createCredentialField('Username', data.username));
+            // Password field
+            container.appendChild(createCredentialField('Password', data.password));
+            // Full domain field
+            container.appendChild(createCredentialField('Full Domain', data.fulldomain));
+        })
+        .catch(err => {
+            document.getElementById('credentialsContent').textContent = 'Error loading credentials';
+        });
 }
 
-function deleteDomain(username, subdomain) {
-    if (!confirm(`Are you sure you want to delete ${subdomain}?`)) {
+function createCredentialField(label, value) {
+    const div = document.createElement('div');
+    div.className = 'mb-3';
+
+    const labelEl = document.createElement('label');
+    labelEl.className = 'form-label';
+    labelEl.textContent = label;
+    div.appendChild(labelEl);
+
+    const inputGroup = document.createElement('div');
+    inputGroup.className = 'input-group';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.value = value; // Safe - direct property assignment
+    input.readOnly = true;
+    inputGroup.appendChild(input);
+
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary';
+    button.innerHTML = '<i class="bi bi-clipboard"></i>';
+    button.addEventListener('click', () => {
+        navigator.clipboard.writeText(value).then(() => {
+            showToast('Copied to clipboard!', 'success');
+        }).catch(() => {
+            showToast('Failed to copy to clipboard', 'danger');
+        });
+    });
+    inputGroup.appendChild(button);
+
+    div.appendChild(inputGroup);
+    return div;
+}
+
+function deleteDomain(username) {
+    if (!confirm('Are you sure you want to delete this domain? This action cannot be undone.')) {
         return;
     }
 
-    fetch(`/dashboard/domain/${username}`, {
+    fetch('/dashboard/domain/' + encodeURIComponent(username), {
         method: 'DELETE',
         headers: {
-            'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            showToast('Domain deleted successfully', 'success');
-            setTimeout(() => location.reload(), 1000);
-        } else {
-            showToast('Failed to delete domain', 'danger');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
+    }).then(() => {
+        showToast('Domain deleted successfully', 'success');
+        setTimeout(() => window.location.reload(), 1000);
+    }).catch(err => {
         showToast('Failed to delete domain', 'danger');
     });
 }
@@ -299,4 +337,278 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
+});
+
+// Bulk claim form handler
+document.addEventListener('DOMContentLoaded', () => {
+    const bulkClaimForm = document.getElementById('bulkClaimForm');
+    if (bulkClaimForm) {
+        bulkClaimForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const usernames = JSON.parse(bulkClaimForm.dataset.usernames || '[]');
+            const userId = parseInt(document.getElementById('bulk-claim-user-id').value);
+            const description = document.getElementById('bulk-claim-description').value;
+
+            if (!userId) {
+                showToast('Please select a user', 'warning');
+                return;
+            }
+
+            fetch('/admin/domains/bulk-claim', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({
+                    usernames,
+                    user_id: userId,
+                    description
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const msg = `Claimed ${data.success_count} of ${data.total} domain(s)`;
+                    showToast(msg, data.fail_count > 0 ? 'warning' : 'success');
+                    if (data.errors && data.errors.length > 0) {
+                        console.error('Bulk claim errors:', data.errors);
+                    }
+                    bootstrap.Modal.getInstance(document.getElementById('bulkClaimModal')).hide();
+                    bulkClaimForm.reset();
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast(data.message || 'Failed to claim domains', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Failed to claim domains', 'danger');
+            });
+        });
+    }
+});
+
+// Profile page - Revoke session function
+function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this session?')) {
+        return;
+    }
+
+    fetch('/profile/sessions/' + sessionId, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast('Session revoked successfully', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showToast(data.message || 'Failed to revoke session', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to revoke session', 'danger');
+    });
+}
+
+// Bulk selection management
+function updateBulkActionButtons(table) {
+    const checkboxes = document.querySelectorAll(`.domain-checkbox[data-table="${table}"]:checked`);
+    const count = checkboxes.length;
+
+    // Update counts
+    document.querySelectorAll(`.selected-count-${table}`).forEach(el => {
+        el.textContent = count;
+    });
+
+    // Enable/disable buttons
+    if (table === 'all') {
+        const deleteBtn = document.querySelector('.bulk-delete-all-btn');
+        if (deleteBtn) {
+            deleteBtn.disabled = count === 0;
+        }
+    } else if (table === 'unmanaged') {
+        const claimBtn = document.querySelector('.bulk-claim-btn');
+        const deleteBtn = document.querySelector('.bulk-delete-unmanaged-btn');
+        if (claimBtn) claimBtn.disabled = count === 0;
+        if (deleteBtn) deleteBtn.disabled = count === 0;
+    }
+}
+
+function getSelectedDomains(table) {
+    const checkboxes = document.querySelectorAll(`.domain-checkbox[data-table="${table}"]:checked`);
+    return Array.from(checkboxes).map(cb => ({
+        username: cb.dataset.username,
+        subdomain: cb.dataset.subdomain
+    }));
+}
+
+function bulkClaimDomains() {
+    const selected = getSelectedDomains('unmanaged');
+    if (selected.length === 0) {
+        showToast('No domains selected', 'warning');
+        return;
+    }
+
+    // Populate bulk claim modal
+    document.getElementById('bulk-claim-count').textContent = selected.length;
+    const listEl = document.getElementById('bulk-claim-list');
+    listEl.innerHTML = selected.map(d => `<div><code>${d.subdomain}</code></div>`).join('');
+
+    // Store selected usernames for form submission
+    document.getElementById('bulkClaimForm').dataset.usernames = JSON.stringify(selected.map(d => d.username));
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('bulkClaimModal'));
+    modal.show();
+}
+
+function bulkDeleteDomains(table) {
+    const selected = getSelectedDomains(table);
+    if (selected.length === 0) {
+        showToast('No domains selected', 'warning');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selected.length} domain(s)? This action cannot be undone.`)) {
+        return;
+    }
+
+    const usernames = selected.map(d => d.username);
+
+    fetch('/admin/domains/bulk-delete', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify({ usernames })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const msg = `Deleted ${data.success_count} of ${data.total} domain(s)`;
+            showToast(msg, data.fail_count > 0 ? 'warning' : 'success');
+            if (data.errors && data.errors.length > 0) {
+                console.error('Bulk delete errors:', data.errors);
+            }
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.message || 'Failed to delete domains', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to delete domains', 'danger');
+    });
+}
+
+// Event delegation for dynamically added buttons
+document.addEventListener('DOMContentLoaded', () => {
+    // Dashboard - View credentials buttons
+    document.querySelectorAll('.view-credentials').forEach(btn => {
+        btn.addEventListener('click', function() {
+            viewCredentials(this.dataset.username);
+        });
+    });
+
+    // Dashboard - Delete domain buttons
+    document.querySelectorAll('.delete-domain').forEach(btn => {
+        btn.addEventListener('click', function() {
+            deleteDomain(this.dataset.username);
+        });
+    });
+
+    // Select-all checkboxes
+    document.querySelectorAll('.select-all-domains').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const table = this.dataset.table;
+            const checked = this.checked;
+            document.querySelectorAll(`.domain-checkbox[data-table="${table}"]`).forEach(cb => {
+                cb.checked = checked;
+            });
+            updateBulkActionButtons(table);
+        });
+    });
+
+    // Individual domain checkboxes
+    document.querySelectorAll('.domain-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateBulkActionButtons(this.dataset.table);
+
+            // Update select-all checkbox state
+            const table = this.dataset.table;
+            const allCheckboxes = document.querySelectorAll(`.domain-checkbox[data-table="${table}"]`);
+            const checkedCheckboxes = document.querySelectorAll(`.domain-checkbox[data-table="${table}"]:checked`);
+            const selectAllCheckbox = document.querySelector(`.select-all-domains[data-table="${table}"]`);
+
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = allCheckboxes.length === checkedCheckboxes.length && allCheckboxes.length > 0;
+                selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < allCheckboxes.length;
+            }
+        });
+    });
+
+    // Bulk action buttons
+    const bulkClaimBtn = document.querySelector('.bulk-claim-btn');
+    if (bulkClaimBtn) {
+        bulkClaimBtn.addEventListener('click', bulkClaimDomains);
+    }
+
+    const bulkDeleteAllBtn = document.querySelector('.bulk-delete-all-btn');
+    if (bulkDeleteAllBtn) {
+        bulkDeleteAllBtn.addEventListener('click', () => bulkDeleteDomains('all'));
+    }
+
+    const bulkDeleteUnmanagedBtn = document.querySelector('.bulk-delete-unmanaged-btn');
+    if (bulkDeleteUnmanagedBtn) {
+        bulkDeleteUnmanagedBtn.addEventListener('click', () => bulkDeleteDomains('unmanaged'));
+    }
+
+    // Global event delegation for all buttons
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.revoke-session-btn')) {
+            const btn = e.target.closest('.revoke-session-btn');
+            const sessionId = btn.dataset.sessionId;
+            revokeSession(sessionId);
+        }
+
+        // Delete user buttons (admin page)
+        if (e.target.closest('.delete-user-btn')) {
+            const btn = e.target.closest('.delete-user-btn');
+            const userId = btn.dataset.userId;
+            const email = btn.dataset.email;
+            deleteUser(userId, email);
+        }
+
+        // Toggle user active buttons (admin page)
+        if (e.target.closest('.toggle-user-btn')) {
+            const btn = e.target.closest('.toggle-user-btn');
+            const userId = btn.dataset.userId;
+            const currentlyActive = btn.dataset.active === 'true';
+            toggleUserActive(userId, currentlyActive);
+        }
+
+        // Admin delete domain buttons (admin page)
+        if (e.target.closest('.admin-delete-domain-btn')) {
+            const btn = e.target.closest('.admin-delete-domain-btn');
+            const username = btn.dataset.username;
+            const subdomain = btn.dataset.subdomain;
+            adminDeleteDomain(username, subdomain);
+        }
+
+        // Show claim modal buttons (admin page)
+        if (e.target.closest('.show-claim-modal-btn')) {
+            const btn = e.target.closest('.show-claim-modal-btn');
+            const username = btn.dataset.username;
+            const subdomain = btn.dataset.subdomain;
+            showClaimModal(username, subdomain);
+        }
+    });
 });

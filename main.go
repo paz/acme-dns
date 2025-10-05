@@ -378,6 +378,23 @@ func startHTTPAPI(errChan chan error, config DNSConfig, dnsservers []*DNSServer)
 					web.SecurityHeadersMiddleware,
 					web.LoggingMiddleware,
 				))
+				// Bulk operations
+				api.POST("/admin/domains/bulk-claim", web.ChainMiddleware(
+					adminHandlers.BulkClaimDomains,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.LoggingMiddleware,
+				))
+				api.POST("/admin/domains/bulk-delete", web.ChainMiddleware(
+					adminHandlers.BulkDeleteDomains,
+					web.CSRFMiddleware(sessionManager),
+					web.RequireAdmin(sessionManager, userRepo),
+					web.SecurityHeadersMiddleware,
+					web.RequestSizeLimitMiddleware(int64(Config.Security.MaxRequestBodySize)),
+					web.LoggingMiddleware,
+				))
 
 				log.Info("Web UI routes registered successfully")
 			}

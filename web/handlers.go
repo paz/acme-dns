@@ -616,9 +616,12 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request, _ http
 
 // RevokeSession revokes a specific session
 func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	w.Header().Set("Content-Type", "application/json")
+
 	session, err := h.sessionManager.GetSession(r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
@@ -627,31 +630,35 @@ func (h *Handlers) RevokeSession(w http.ResponseWriter, r *http.Request, ps http
 	// Verify the session belongs to the current user
 	targetSession, err := h.sessionRepo.Get(sessionID)
 	if err != nil {
-		http.Error(w, "Session not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Session not found"})
 		return
 	}
 
 	if targetSession.UserID != session.UserID {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Forbidden"})
 		return
 	}
 
 	// Prevent revoking current session
 	if sessionID == session.ID {
-		http.Error(w, "Cannot revoke current session", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Cannot revoke current session"})
 		return
 	}
 
 	// Delete the session
 	if err := h.sessionRepo.Delete(sessionID); err != nil {
 		log.WithFields(log.Fields{"error": err, "session_id": sessionID}).Error("Failed to delete session")
-		http.Error(w, "Failed to revoke session", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to revoke session"})
 		return
 	}
 
 	log.WithFields(log.Fields{"user_id": session.UserID, "revoked_session": sessionID}).Info("User revoked session")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(`{"status":"success"}`)); err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Failed to write response")
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Failed to encode JSON response")
 	}
 }
