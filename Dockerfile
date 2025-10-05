@@ -1,5 +1,5 @@
 # Build stage - pinned to latest stable Go on Alpine
-FROM golang:1.24.0-alpine3.21 AS builder
+FROM golang:1.25.1-alpine3.21 AS builder
 LABEL maintainer="joona@kuori.org"
 
 # Install build dependencies (minimal set)
