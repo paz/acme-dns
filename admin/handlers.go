@@ -217,7 +217,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 
 	if err := r.ParseForm(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid form data"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid form data"})
 		return
 	}
 
@@ -238,7 +238,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 		if err != nil {
 			log.WithFields(log.Fields{"error": err, "email": email}).Error("Failed to create user")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create user: " + err.Error()})
 			return
 		}
 
@@ -247,7 +247,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request, _ httprout
 		if err != nil {
 			log.WithFields(log.Fields{"error": err, "user_id": newUser.ID}).Error("Failed to create password reset token")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create password reset token"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to create password reset token"})
 			return
 		}
 

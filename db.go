@@ -131,7 +131,9 @@ func (d *acmedb) handleDBUpgradeTo1() error {
 		log.WithFields(log.Fields{"error": err.Error()}).Error("Error in DB upgrade")
 		return err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 	for rows.Next() {
 		var subdomain string
 		err = rows.Scan(&subdomain)
@@ -267,7 +269,9 @@ func (d *acmedb) GetByUsername(u uuid.UUID) (ACMETxt, error) {
 	if err != nil {
 		return ACMETxt{}, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	// It will only be one row though
 	for rows.Next() {
@@ -306,7 +310,9 @@ func (d *acmedb) GetTXTForDomain(domain string) ([]string, error) {
 	if err != nil {
 		return txts, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var rtxt string
