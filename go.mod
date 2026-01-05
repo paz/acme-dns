@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/mholt/acmez/v3 v3.1.4
 	github.com/miekg/dns v1.1.68
 	github.com/rs/cors v1.11.1
